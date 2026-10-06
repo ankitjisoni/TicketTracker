@@ -134,6 +134,13 @@ const App = (() => {
       return this._fetch(`/api/personal-notes/${id}`, { method: 'DELETE' });
     },
 
+    uploadImage(dataUrl, filename) {
+      return this._fetch('/api/upload-image', {
+        method: 'POST',
+        body: JSON.stringify({ dataUrl, filename }),
+      });
+    },
+
     getStandupData(hours = 24) {
       return this._fetch(`/api/standup?hours=${hours}`);
     },
@@ -826,24 +833,26 @@ const App = (() => {
     const descriptionEl = document.getElementById('personal-note-description');
     if (titleEl) titleEl.value = '';
     if (descriptionEl) descriptionEl.value = '';
+    const tray = document.getElementById('personal-note-image-tray');
+    if (tray) tray.innerHTML = '';
   }
 
   async function savePersonalNote() {
     const titleEl = document.getElementById('personal-note-title');
     const descriptionEl = document.getElementById('personal-note-description');
-    const title = titleEl?.value.trim();
+    let title = titleEl?.value.trim();
     const description = descriptionEl?.value.trim();
 
-    if (!title) {
-      UI.showToast('Please enter a note heading.', 'warning');
-      titleEl?.focus();
+    if (!description) {
+      UI.showToast('Please enter a note description or paste an image.', 'warning');
+      descriptionEl?.focus();
       return;
     }
 
-    if (!description) {
-      UI.showToast('Please enter a note description.', 'warning');
-      descriptionEl?.focus();
-      return;
+    if (!title) {
+      const now = new Date();
+      title = `Note — ${now.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+      if (titleEl) titleEl.value = title;
     }
 
     try {
@@ -1089,6 +1098,26 @@ const App = (() => {
     const clearNoteBtn = document.getElementById('btn-clear-personal-note');
     if (clearNoteBtn) {
       clearNoteBtn.addEventListener('click', clearPersonalNoteForm);
+    }
+
+    /* Personal Notes image paste, drag & drop, and file attachment */
+    const personalDescEl = document.getElementById('personal-note-description');
+    const personalTrayEl = document.getElementById('personal-note-image-tray');
+    const personalFileEl = document.getElementById('file-personal-img');
+    const personalAttachBtn = document.getElementById('btn-attach-personal-img');
+    if (personalDescEl && personalTrayEl && typeof UI !== 'undefined' && UI.setupImagePasteAndDrop) {
+      UI.setupImagePasteAndDrop(personalDescEl, personalTrayEl, personalFileEl, {
+        onUploaded: () => {
+          const titleEl = document.getElementById('personal-note-title');
+          if (titleEl && !titleEl.value.trim()) {
+            const now = new Date();
+            titleEl.value = `Image Note — ${now.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+          }
+        },
+      });
+      if (personalAttachBtn && personalFileEl) {
+        personalAttachBtn.addEventListener('click', () => personalFileEl.click());
+      }
     }
 
     /* View mode toggles (List vs Board) */

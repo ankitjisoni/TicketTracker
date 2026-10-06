@@ -6,11 +6,20 @@
  */
 
 const { Router } = require('express');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const db = require('./db');
 const ado = require('./ado-client');
 const poller = require('./poller');
 
 const router = Router();
+
+// Ensure uploads directory exists
+const UPLOADS_DIR = path.join(__dirname, '..', 'public', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TICKETS
@@ -762,6 +771,59 @@ router.delete('/api/personal-notes/:noteId', (req, res) => {
   } catch (err) {
     console.error('[routes] DELETE /api/personal-notes/:noteId error:', err.message);
     res.status(500).json({ error: 'Failed to delete note' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMAGE UPLOAD (Supports Ctrl+V and drag-and-drop for all notes)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/upload-image
+ * Upload a pasted/dropped image as base64 data URL and save to /public/uploads/
+ * Body: { dataUrl: string, filename?: string }
+ */
+router.post('/api/upload-image', (req, res) => {
+  try {
+    const { dataUrl, filename } = req.body;
+    if (!dataUrl || typeof dataUrl !== 'string') {
+      return res.status(400).json({ error: 'Request body must include a valid "dataUrl" string' });
+    }
+
+    // Match data URI pattern: data:image/(png|jpeg|jpg|gif|webp|svg+xml);base64,...
+    const matches = dataUrl.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
+    if (!matches) {
+      return res.status(400).json({ error: 'Invalid image format. Expected data:image/*;base64,...' });
+    }
+
+    const rawExt = matches[1].toLowerCase();
+    const ext = rawExt === 'jpeg' ? 'jpg' : rawExt === 'svg+xml' ? 'svg' : rawExt;
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Limit image size to 25MB
+    if (buffer.length > 25 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Image exceeds maximum allowed size (25MB)' });
+    }
+
+    // Generate unique, collision-proof filename
+    const randomSuffix = crypto.randomBytes(6).toString('hex');
+    const safeBaseName = filename ? path.basename(filename, path.extname(filename)).replace(/[^a-zA-Z0-9_-]/g, '_') : 'pasted-image';
+    const finalFilename = `${safeBaseName}-${Date.now()}-${randomSuffix}.${ext}`;
+    const targetPath = path.join(UPLOADS_DIR, finalFilename);
+
+    fs.writeFileSync(targetPath, buffer);
+
+    const publicUrl = `/uploads/${finalFilename}`;
+    res.json({
+      url: publicUrl,
+      filename: finalFilename,
+      size: buffer.length,
+      mimeType: `image/${rawExt}`,
+    });
+  } catch (err) {
+    console.error('[routes] POST /api/upload-image error:', err.message);
+    res.status(500).json({ error: 'Failed to upload image' });
   }
 });
 

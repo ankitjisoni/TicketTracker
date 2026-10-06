@@ -8,3 +8,7 @@ node_modules/
 *.db
 *.db-wal
 *.db-shm
+
+# Uploaded images
+public/uploads/*
+!public/uploads/.gitkeep

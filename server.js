@@ -28,8 +28,9 @@ const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS, 10) || 30000;
 
 const app = express();
 
-// Parse JSON request bodies
-app.use(express.json());
+// Parse JSON and URL-encoded request bodies (allow up to 50mb for pasted screenshots & images)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Serve static front-end assets from the "public" directory
 app.use(express.static(path.join(__dirname, 'public')));

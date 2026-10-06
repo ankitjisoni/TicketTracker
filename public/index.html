@@ -416,7 +416,16 @@
           </div>
           <div class="notes-field">
             <label for="personal-note-description">Description</label>
-            <textarea id="personal-note-description" placeholder="Write the details here"></textarea>
+            <textarea id="personal-note-description" placeholder="Write the details here… (Paste images with Ctrl+V or drop files here)"></textarea>
+            <div class="note-image-preview-tray" id="personal-note-image-tray"></div>
+            <div class="note-input-helper">
+              <span class="note-helper-text">💡 Press <kbd>Ctrl+V</kbd> to paste screenshots directly into note</span>
+              <button type="button" class="btn-attach-img" id="btn-attach-personal-img" title="Select image file to upload">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                <span>Attach Image</span>
+              </button>
+              <input type="file" id="file-personal-img" accept="image/*" style="display:none" />
+            </div>
           </div>
         </div>
 

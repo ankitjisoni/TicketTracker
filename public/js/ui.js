@@ -307,6 +307,241 @@ const UI = (() => {
   }
 
   /* ----------------------------------------------------------
+     formatNoteContent — parse markdown image syntax ![alt](url)
+     and produce clean text + rich interactive image gallery
+     ---------------------------------------------------------- */
+  function formatNoteContent(rawText) {
+    if (!rawText) return { textHtml: '', imagesHtml: '', hasImages: false };
+
+    const text = String(rawText);
+    const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    const images = [];
+
+    let match;
+    while ((match = imgRegex.exec(text)) !== null) {
+      const alt = match[1] || 'Note image';
+      const src = match[2].trim();
+      if (src) {
+        images.push({ alt, src });
+      }
+    }
+
+    const cleanedText = text.replace(imgRegex, '').trim();
+    const textHtml = cleanedText ? escapeHtml(cleanedText).replace(/\n/g, '<br/>') : '';
+
+    let imagesHtml = '';
+    if (images.length > 0) {
+      const thumbs = images.map((img) => `
+        <div class="note-image-thumb-wrap" data-img-src="${escapeAttr(img.src)}" data-img-alt="${escapeAttr(img.alt)}" title="Click to view full image">
+          <img src="${escapeAttr(img.src)}" alt="${escapeAttr(img.alt)}" class="note-image-thumb" loading="lazy" />
+          <div class="note-image-thumb-overlay">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
+            <span>View</span>
+          </div>
+        </div>
+      `).join('');
+      imagesHtml = `<div class="note-image-gallery">${thumbs}</div>`;
+    }
+
+    return { textHtml, imagesHtml, hasImages: images.length > 0 };
+  }
+
+  /* ----------------------------------------------------------
+     showImageLightbox — full-screen zoom and preview modal
+     ---------------------------------------------------------- */
+  function showImageLightbox(src, alt = 'Image preview') {
+    let overlay = document.getElementById('image-lightbox-overlay');
+    if (!overlay) {
+      overlay = createElement('div', 'image-lightbox-overlay');
+      overlay.id = 'image-lightbox-overlay';
+      document.body.appendChild(overlay);
+    }
+
+    const filename = src.split('/').pop() || 'image';
+
+    overlay.innerHTML = `
+      <div class="image-lightbox-container">
+        <div class="image-lightbox-header">
+          <div class="image-lightbox-title" title="${escapeAttr(src)}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+            <span>${escapeHtml(filename)}</span>
+          </div>
+          <div class="image-lightbox-actions">
+            <button class="lightbox-btn" id="lightbox-btn-copy" title="Copy Image URL">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              <span>Copy URL</span>
+            </button>
+            <a class="lightbox-btn" href="${escapeAttr(src)}" target="_blank" rel="noopener" title="Open Full Size">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+              <span>Open</span>
+            </a>
+            <a class="lightbox-btn" href="${escapeAttr(src)}" download="${escapeAttr(filename)}" title="Download Image">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Download</span>
+            </a>
+            <button class="lightbox-btn danger" id="lightbox-btn-close" title="Close (Esc)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="image-lightbox-body">
+          <img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" class="image-lightbox-img" />
+        </div>
+      </div>
+    `;
+
+    overlay.classList.add('visible');
+
+    const closeLightbox = () => {
+      overlay.classList.remove('visible');
+    };
+
+    overlay.querySelector('#lightbox-btn-close')?.addEventListener('click', closeLightbox);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay || e.target.classList.contains('image-lightbox-body')) {
+        closeLightbox();
+      }
+    });
+
+    overlay.querySelector('#lightbox-btn-copy')?.addEventListener('click', async () => {
+      try {
+        const fullUrl = new URL(src, window.location.origin).href;
+        await navigator.clipboard.writeText(fullUrl);
+        showToast('Image URL copied to clipboard!', 'success');
+      } catch {
+        showToast('Could not copy URL', 'warning');
+      }
+    });
+  }
+
+  /* ----------------------------------------------------------
+     setupImagePasteAndDrop — handles Ctrl+V, drag & drop, and file picker
+     ---------------------------------------------------------- */
+  function setupImagePasteAndDrop(textareaEl, trayEl, fileInputEl, options = {}) {
+    if (!textareaEl) return;
+
+    async function processImageFile(file) {
+      if (!file || !file.type.startsWith('image/')) {
+        showToast('Selected file is not an image.', 'warning');
+        return;
+      }
+
+      const uploadId = 'upload-' + Date.now();
+      if (trayEl) {
+        const tempChip = createElement('div', 'tray-uploading-chip');
+        tempChip.id = uploadId;
+        tempChip.innerHTML = `
+          <div class="mini-spinner"></div>
+          <span>Uploading screenshot…</span>
+        `;
+        trayEl.appendChild(tempChip);
+      }
+
+      const placeholder = `![Uploading ${file.name || 'image'}...]()`;
+      const startPos = textareaEl.selectionStart ?? textareaEl.value.length;
+      const endPos = textareaEl.selectionEnd ?? textareaEl.value.length;
+      const currentVal = textareaEl.value;
+      const prefix = startPos > 0 && !currentVal.substring(0, startPos).endsWith('\n') ? '\n' : '';
+      textareaEl.value = currentVal.substring(0, startPos) + prefix + placeholder + '\n' + currentVal.substring(endPos);
+
+      try {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Failed to read image file'));
+          reader.readAsDataURL(file);
+        });
+
+        if (typeof App === 'undefined' || !App.api || !App.api.uploadImage) {
+          throw new Error('API uploadImage is unavailable');
+        }
+
+        const result = await App.api.uploadImage(dataUrl, file.name);
+        const imageUrl = result.url;
+        const markdownImg = `![image](${imageUrl})`;
+
+        if (textareaEl.value.includes(placeholder)) {
+          textareaEl.value = textareaEl.value.replace(placeholder, markdownImg);
+        } else {
+          textareaEl.value = (textareaEl.value ? textareaEl.value + '\n' : '') + markdownImg;
+        }
+
+        const tempChip = document.getElementById(uploadId);
+        if (tempChip) tempChip.remove();
+
+        if (trayEl) {
+          const previewChip = createElement('div', 'tray-image-chip');
+          previewChip.innerHTML = `
+            <img src="${escapeAttr(imageUrl)}" alt="Pasted screenshot" class="tray-thumb" />
+            <span class="tray-chip-name">${escapeHtml(result.filename || 'image')}</span>
+            <button type="button" class="tray-chip-remove" title="Remove image">×</button>
+          `;
+          previewChip.querySelector('.tray-thumb').addEventListener('click', () => {
+            showImageLightbox(imageUrl);
+          });
+          previewChip.querySelector('.tray-chip-remove').addEventListener('click', (e) => {
+            e.stopPropagation();
+            previewChip.remove();
+            textareaEl.value = textareaEl.value.replace(markdownImg, '').trim();
+          });
+          trayEl.appendChild(previewChip);
+        }
+
+        showToast('Image pasted and attached!', 'success');
+        if (options.onUploaded) options.onUploaded(result);
+      } catch (err) {
+        const tempChip = document.getElementById(uploadId);
+        if (tempChip) tempChip.remove();
+        textareaEl.value = textareaEl.value.replace(placeholder, '').trim();
+        showToast(err.message || 'Failed to upload image', 'error');
+      }
+    }
+
+    textareaEl.addEventListener('paste', (e) => {
+      const clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData || !clipboardData.items) return;
+
+      const items = Array.from(clipboardData.items);
+      const imageItems = items.filter((item) => item.type && item.type.startsWith('image/'));
+
+      if (imageItems.length > 0) {
+        e.preventDefault();
+        imageItems.forEach((item) => {
+          const file = item.getAsFile();
+          if (file) processImageFile(file);
+        });
+      }
+    });
+
+    textareaEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      textareaEl.classList.add('drag-over');
+    });
+    textareaEl.addEventListener('dragleave', () => {
+      textareaEl.classList.remove('drag-over');
+    });
+    textareaEl.addEventListener('drop', (e) => {
+      textareaEl.classList.remove('drag-over');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        const imageFiles = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+        if (imageFiles.length > 0) {
+          e.preventDefault();
+          imageFiles.forEach((f) => processImageFile(f));
+        }
+      }
+    });
+
+    if (fileInputEl) {
+      fileInputEl.addEventListener('change', () => {
+        if (fileInputEl.files && fileInputEl.files.length) {
+          Array.from(fileInputEl.files).forEach((f) => processImageFile(f));
+          fileInputEl.value = '';
+        }
+      });
+    }
+  }
+
+  /* ----------------------------------------------------------
      renderCommitNotes
      ---------------------------------------------------------- */
   function renderCommitNotes(notes) {
@@ -323,8 +558,12 @@ const UI = (() => {
           ? `<span class="commit-note-target">→ ${escapeHtml(note.targetStatus || note.target_status)}</span>`
           : '';
 
+        const rawNoteText = note.note_text || note.noteText || note.text || '';
+        const formatted = formatNoteContent(rawNoteText);
+
         card.innerHTML = `
-          <div class="commit-note-text">${escapeHtml(note.note_text || note.noteText || note.text || '')}</div>
+          ${formatted.textHtml ? `<div class="commit-note-text">${formatted.textHtml}</div>` : ''}
+          ${formatted.imagesHtml}
           <div class="commit-note-footer">
             <div class="commit-note-meta">
               ${targetHtml}
@@ -336,6 +575,13 @@ const UI = (() => {
             </div>
           </div>
         `;
+
+        card.querySelectorAll('.note-image-thumb-wrap').forEach((thumb) => {
+          thumb.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showImageLightbox(thumb.dataset.imgSrc, thumb.dataset.imgAlt);
+          });
+        });
 
         /* Note action handlers */
         card.querySelector('[data-action="edit-note"]').addEventListener('click', (e) => {
@@ -356,7 +602,16 @@ const UI = (() => {
     /* Add note form */
     const form = createElement('div', 'add-note-form');
     form.innerHTML = `
-      <textarea id="new-note-text" placeholder="Write a commit note…"></textarea>
+      <textarea id="new-note-text" placeholder="Write a commit note… (Paste images with Ctrl+V)"></textarea>
+      <div class="note-image-preview-tray" id="new-note-image-tray"></div>
+      <div class="note-input-helper">
+        <span class="note-helper-text">💡 Press <kbd>Ctrl+V</kbd> to paste screenshot</span>
+        <button type="button" class="btn-attach-img" id="btn-attach-commit-img" title="Select image file to upload">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          <span>Attach Image</span>
+        </button>
+        <input type="file" id="file-commit-img" accept="image/*" style="display:none" />
+      </div>
       <div class="add-note-controls">
         <select id="new-note-target-status">
           <option value="">No target status</option>
@@ -370,6 +625,18 @@ const UI = (() => {
       </div>
     `;
     container.appendChild(form);
+
+    const newNoteText = document.getElementById('new-note-text');
+    const newNoteTray = document.getElementById('new-note-image-tray');
+    const fileCommitImg = document.getElementById('file-commit-img');
+    const btnAttachCommitImg = document.getElementById('btn-attach-commit-img');
+
+    if (newNoteText && newNoteTray) {
+      setupImagePasteAndDrop(newNoteText, newNoteTray, fileCommitImg);
+      if (btnAttachCommitImg && fileCommitImg) {
+        btnAttachCommitImg.addEventListener('click', () => fileCommitImg.click());
+      }
+    }
 
     const addBtn = document.getElementById('btn-add-note');
     if (addBtn) {
@@ -406,7 +673,7 @@ const UI = (() => {
         <div class="notes-empty-state">
           ${icons.notes}
           <h3>No notes saved yet</h3>
-          <p>Add a heading and description, then save it to build your notes stack.</p>
+          <p>Add a heading and description or paste screenshots with Ctrl+V, then save it.</p>
         </div>
       `;
       return;
@@ -424,6 +691,8 @@ const UI = (() => {
       const stampLabel = wasEdited ? 'Updated' : 'Saved';
       const stamp = formatDateTime(updatedAt);
 
+      const formatted = formatNoteContent(description);
+
       card.innerHTML = `
         <div class="personal-note-card-top">
           <span class="personal-note-index">${String(i + 1).padStart(2, '0')}</span>
@@ -433,11 +702,19 @@ const UI = (() => {
           </div>
         </div>
         <h4 class="personal-note-title">${escapeHtml(title)}</h4>
-        <p class="personal-note-description">${escapeHtml(description)}</p>
+        ${formatted.textHtml ? `<div class="personal-note-description">${formatted.textHtml}</div>` : ''}
+        ${formatted.imagesHtml}
         <div class="personal-note-footer">
           <span title="${escapeHtml(stampLabel)} ${escapeHtml(stamp)}">${icons.clock}${stamp ? `${stampLabel} ${escapeHtml(stamp)}` : 'Just now'}</span>
         </div>
       `;
+
+      card.querySelectorAll('.note-image-thumb-wrap').forEach((thumb) => {
+        thumb.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showImageLightbox(thumb.dataset.imgSrc, thumb.dataset.imgAlt);
+        });
+      });
 
       card.querySelector('[data-action="edit-personal-note"]').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1391,8 +1668,17 @@ const UI = (() => {
     showModal(
       'Edit Note',
       `<label>Note</label>
-       <textarea id="modal-edit-note-text">${escapeHtml(note.note_text || note.noteText || note.text || '')}</textarea>
-       <label>Target Status</label>
+       <textarea id="modal-edit-note-text" placeholder="Write a note… (Paste images with Ctrl+V)">${escapeHtml(note.note_text || note.noteText || note.text || '')}</textarea>
+       <div class="note-image-preview-tray" id="modal-edit-note-tray"></div>
+       <div class="note-input-helper">
+         <span class="note-helper-text">💡 Press <kbd>Ctrl+V</kbd> to paste screenshot</span>
+         <button type="button" class="btn-attach-img" id="btn-attach-edit-img" title="Select image file to upload">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+           <span>Attach Image</span>
+         </button>
+         <input type="file" id="file-modal-edit-img" accept="image/*" style="display:none" />
+       </div>
+       <label style="margin-top:12px;">Target Status</label>
        <select id="modal-edit-note-status">
          <option value="">No target status</option>
          <option value="New"${(note.targetStatus || note.target_status) === 'New' ? ' selected' : ''}>New</option>
@@ -1418,8 +1704,17 @@ const UI = (() => {
 
     setTimeout(() => {
       const ta = document.getElementById('modal-edit-note-text');
+      const tray = document.getElementById('modal-edit-note-tray');
+      const fileInput = document.getElementById('file-modal-edit-img');
+      const attachBtn = document.getElementById('btn-attach-edit-img');
+      if (ta && tray) {
+        setupImagePasteAndDrop(ta, tray, fileInput);
+        if (attachBtn && fileInput) {
+          attachBtn.addEventListener('click', () => fileInput.click());
+        }
+      }
       if (ta) ta.focus();
-    }, 350);
+    }, 150);
   }
 
   function showEditPersonalNoteModal(note, onSave) {
@@ -1427,18 +1722,26 @@ const UI = (() => {
       'Edit Note',
       `<label>Heading</label>
        <input type="text" id="modal-personal-note-title" maxlength="120" value="${escapeAttr(note.title || '')}" />
-       <label>Description</label>
-       <textarea id="modal-personal-note-description">${escapeHtml(note.description || '')}</textarea>`,
+       <label style="margin-top:12px;">Description</label>
+       <textarea id="modal-personal-note-description" placeholder="Write the details here… (Paste images with Ctrl+V)">${escapeHtml(note.description || '')}</textarea>
+       <div class="note-image-preview-tray" id="modal-edit-personal-tray"></div>
+       <div class="note-input-helper">
+         <span class="note-helper-text">💡 Press <kbd>Ctrl+V</kbd> to paste screenshot</span>
+         <button type="button" class="btn-attach-img" id="btn-attach-edit-personal-img" title="Select image file to upload">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+           <span>Attach Image</span>
+         </button>
+         <input type="file" id="file-modal-edit-personal-img" accept="image/*" style="display:none" />
+       </div>`,
       () => {
-        const title = document.getElementById('modal-personal-note-title')?.value.trim();
+        let title = document.getElementById('modal-personal-note-title')?.value.trim();
         const description = document.getElementById('modal-personal-note-description')?.value.trim();
-        if (!title) {
-          showToast('Heading cannot be empty.', 'warning');
-          return;
-        }
         if (!description) {
           showToast('Description cannot be empty.', 'warning');
           return;
+        }
+        if (!title) {
+          title = 'Untitled Note';
         }
         hideModal();
         if (onSave) onSave(note.id, title, description);
@@ -1449,9 +1752,19 @@ const UI = (() => {
     if (btn) btn.textContent = 'Save';
 
     setTimeout(() => {
+      const desc = document.getElementById('modal-personal-note-description');
+      const tray = document.getElementById('modal-edit-personal-tray');
+      const fileInput = document.getElementById('file-modal-edit-personal-img');
+      const attachBtn = document.getElementById('btn-attach-edit-personal-img');
+      if (desc && tray) {
+        setupImagePasteAndDrop(desc, tray, fileInput);
+        if (attachBtn && fileInput) {
+          attachBtn.addEventListener('click', () => fileInput.click());
+        }
+      }
       const input = document.getElementById('modal-personal-note-title');
       if (input) input.focus();
-    }, 350);
+    }, 150);
   }
 
   /* ----------------------------------------------------------
@@ -2558,8 +2871,12 @@ const UI = (() => {
         const targetHtml = note.targetStatus || note.target_status
           ? `<span class="commit-note-target">→ ${escapeHtml(note.targetStatus || note.target_status)}</span>`
           : '';
+        const rawNoteText = note.note_text || note.noteText || note.text || '';
+        const formatted = formatNoteContent(rawNoteText);
+
         card.innerHTML = `
-          <div class="commit-note-text">${escapeHtml(note.note_text || note.noteText || note.text || '')}</div>
+          ${formatted.textHtml ? `<div class="commit-note-text">${formatted.textHtml}</div>` : ''}
+          ${formatted.imagesHtml}
           <div class="commit-note-footer">
             <div class="commit-note-meta">
               ${targetHtml}
@@ -2571,6 +2888,14 @@ const UI = (() => {
             </div>
           </div>
         `;
+
+        card.querySelectorAll('.note-image-thumb-wrap').forEach((thumb) => {
+          thumb.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showImageLightbox(thumb.dataset.imgSrc, thumb.dataset.imgAlt);
+          });
+        });
+
         card.querySelector('[data-action="drawer-edit-note"]').addEventListener('click', (e) => {
           e.stopPropagation();
           if (typeof App !== 'undefined' && App.editNote) App.editNote(note);
@@ -2592,7 +2917,16 @@ const UI = (() => {
     // Add note form
     const form = createElement('div', 'add-note-form');
     form.innerHTML = `
-      <textarea id="drawer-new-note-text" placeholder="Write a note…"></textarea>
+      <textarea id="drawer-new-note-text" placeholder="Write a note… (Paste images with Ctrl+V)"></textarea>
+      <div class="note-image-preview-tray" id="drawer-note-image-tray"></div>
+      <div class="note-input-helper">
+        <span class="note-helper-text">💡 Press <kbd>Ctrl+V</kbd> to paste screenshot</span>
+        <button type="button" class="btn-attach-img" id="btn-attach-drawer-img" title="Select image file to upload">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          <span>Attach Image</span>
+        </button>
+        <input type="file" id="file-drawer-img" accept="image/*" style="display:none" />
+      </div>
       <div class="add-note-controls">
         <select id="drawer-new-note-target">
           <option value="">No target status</option>
@@ -2607,12 +2941,24 @@ const UI = (() => {
     `;
     container.appendChild(form);
 
+    const drawerTextEl = document.getElementById('drawer-new-note-text');
+    const drawerTrayEl = document.getElementById('drawer-note-image-tray');
+    const drawerFileEl = document.getElementById('file-drawer-img');
+    const drawerAttachBtn = document.getElementById('btn-attach-drawer-img');
+
+    if (drawerTextEl && drawerTrayEl) {
+      setupImagePasteAndDrop(drawerTextEl, drawerTrayEl, drawerFileEl);
+      if (drawerAttachBtn && drawerFileEl) {
+        drawerAttachBtn.addEventListener('click', () => drawerFileEl.click());
+      }
+    }
+
     form.querySelector('#drawer-btn-add-note')?.addEventListener('click', async () => {
       const textEl = document.getElementById('drawer-new-note-text');
       const targetEl = document.getElementById('drawer-new-note-target');
       const text = textEl?.value?.trim();
       if (!text) {
-        showToast('Please enter note text', 'warning');
+        showToast('Please enter note text or paste an image', 'warning');
         return;
       }
       try {
@@ -2707,5 +3053,9 @@ const UI = (() => {
     openKanbanDrawer,
     closeKanbanDrawer,
     populateBoardFilters,
+    formatNoteContent,
+    showImageLightbox,
+    setupImagePasteAndDrop,
   };
 })();
+
