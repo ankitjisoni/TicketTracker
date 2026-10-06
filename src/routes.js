@@ -801,6 +801,88 @@ router.get('/api/standup', (req, res) => {
   }
 });
 
+/**
+ * GET /api/release-notes
+ * Build structured release notes dataset with categorization and commit notes.
+ * Query params:
+ *   - iterationPath: string
+ *   - scope: 'completed' | 'all' (default: 'completed')
+ *   - version: string (default: auto generated)
+ */
+router.get('/api/release-notes', (req, res) => {
+  try {
+    const iterationPath = req.query.iterationPath ? String(req.query.iterationPath).trim() : null;
+    const scope = req.query.scope === 'all' ? 'all' : 'completed';
+    const version = req.query.version ? String(req.query.version).trim() : null;
+
+    const tickets = db.getReleaseNotesData({ iterationPath, scope });
+
+    const categories = {
+      features: [],
+      bugs: [],
+      tasks: [],
+      other: [],
+    };
+
+    let totalStoryPoints = 0;
+    const contributors = new Set();
+
+    tickets.forEach((t) => {
+      const type = (t.work_item_type || '').toLowerCase();
+      const points = typeof t.story_points === 'number' ? t.story_points : null;
+      if (points) totalStoryPoints += points;
+
+      if (t.assigned_to) contributors.add(t.assigned_to);
+
+      const item = {
+        id: t.id,
+        adoId: t.ado_id,
+        title: t.title,
+        state: t.state,
+        workItemType: t.work_item_type,
+        storyPoints: points,
+        priority: t.priority,
+        areaPath: t.area_path,
+        iterationPath: t.iteration_path,
+        codeCommitted: !!t.code_committed,
+        url: t.url,
+        notes: (t.notes || []).map((n) => ({
+          id: n.id,
+          text: n.note_text,
+          targetStatus: n.target_status,
+          createdAt: n.created_at,
+        })),
+      };
+
+      if (['user story', 'feature', 'epic', 'requirement', 'enhancement'].includes(type)) {
+        categories.features.push(item);
+      } else if (['bug', 'defect', 'issue'].includes(type)) {
+        categories.bugs.push(item);
+      } else if (['task', 'tech debt', 'spike', 'maintenance'].includes(type)) {
+        categories.tasks.push(item);
+      } else {
+        categories.other.push(item);
+      }
+    });
+
+    const displayVersion = version || (iterationPath ? iterationPath.split('\\').pop() : `Release ${new Date().toISOString().slice(0, 10)}`);
+
+    res.json({
+      version: displayVersion,
+      iterationPath,
+      scope,
+      totalTickets: tickets.length,
+      totalStoryPoints: Math.round(totalStoryPoints * 10) / 10,
+      categories,
+      contributors: Array.from(contributors).sort(),
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[routes] GET /api/release-notes error:', err.message);
+    res.status(500).json({ error: 'Failed to generate release notes data' });
+  }
+});
+
 router.get('/api/events', (req, res) => {
   // Set SSE headers
   res.writeHead(200, {

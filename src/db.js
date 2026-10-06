@@ -438,6 +438,36 @@ function getStandupData(hours = 24) {
   };
 }
 
+/**
+ * Return tickets with their developer commit notes for building Release Notes.
+ * @param {object} [options]
+ * @param {string} [options.iterationPath]
+ * @param {string} [options.scope] 'completed' | 'all'
+ * @returns {Array<object>}
+ */
+function getReleaseNotesData({ iterationPath, scope = 'completed' } = {}) {
+  let query = 'SELECT * FROM tickets WHERE 1=1';
+  const params = [];
+
+  if (iterationPath && String(iterationPath).trim()) {
+    query += ' AND iteration_path LIKE ?';
+    params.push(`%${iterationPath.trim()}%`);
+  }
+
+  if (scope === 'completed') {
+    query += " AND (code_committed = 1 OR LOWER(state) IN ('closed', 'done', 'resolved', 'completed', 'qa passed'))";
+  }
+
+  query += ' ORDER BY created_at DESC';
+  const tickets = db.prepare(query).all(...params);
+
+  const stmtNotes = db.prepare('SELECT * FROM commit_notes WHERE ticket_id = ? ORDER BY created_at ASC');
+  return tickets.map((t) => ({
+    ...t,
+    notes: stmtNotes.all(t.id),
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
@@ -469,5 +499,6 @@ module.exports = {
   updatePersonalNote,
   deletePersonalNote,
   getStandupData,
+  getReleaseNotesData,
 };
 

@@ -840,6 +840,492 @@ const UI = (() => {
     overlay.classList.add('visible');
   }
 
+  /* ----------------------------------------------------------
+     Release Notes Builder Modal
+     ---------------------------------------------------------- */
+  function showReleaseNotesModal(releaseData, onScopeChange, iterationsList = []) {
+    const overlay = document.getElementById('modal-overlay');
+    if (!overlay) return;
+
+    let currentFormat = 'markdown'; // 'markdown' | 'html' | 'plaintext'
+    let data = releaseData;
+    let title = data.version || 'Release Notes';
+    let currentIteration = data.iterationPath || '';
+    let currentScope = data.scope || 'completed';
+
+    // Options
+    let includeNotes = true;
+    let includePoints = true;
+    let includeLinks = true;
+    let includeContributors = true;
+
+    function getAllItemIds(d) {
+      const ids = new Set();
+      ['features', 'bugs', 'tasks', 'other'].forEach((k) => {
+        (d.categories?.[k] || []).forEach((t) => ids.add(t.id));
+      });
+      return ids;
+    }
+
+    let checkedTickets = getAllItemIds(data);
+
+    function generateContent() {
+      const isMd = currentFormat === 'markdown';
+      const isHtml = currentFormat === 'html';
+      const dateStr = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+      });
+
+      const selectedFeatures = (data.categories?.features || []).filter((t) => checkedTickets.has(t.id));
+      const selectedBugs = (data.categories?.bugs || []).filter((t) => checkedTickets.has(t.id));
+      const selectedTasks = (data.categories?.tasks || []).filter((t) => checkedTickets.has(t.id));
+      const selectedOther = (data.categories?.other || []).filter((t) => checkedTickets.has(t.id));
+
+      const allSelected = [
+        ...selectedFeatures,
+        ...selectedBugs,
+        ...selectedTasks,
+        ...selectedOther,
+      ];
+
+      const totalItems = allSelected.length;
+      const totalPoints = allSelected.reduce((sum, t) => sum + (t.storyPoints || 0), 0);
+      const activeContributors = Array.from(new Set(allSelected.map((t) => t.assignedTo).filter(Boolean))).sort();
+
+      if (isMd) {
+        const lines = [];
+        lines.push(`# 🚀 ${title}`);
+        lines.push(`> *Generated on ${dateStr} • Scope: ${currentIteration ? currentIteration : 'All Iterations'}*`);
+        lines.push('');
+        lines.push('### 📊 Release Summary');
+        lines.push(`- **Total Deliverables:** ${totalItems} work item${totalItems !== 1 ? 's' : ''}`);
+        if (includePoints && totalPoints > 0) {
+          lines.push(`- **Story Points Delivered:** ${Math.round(totalPoints * 10) / 10} pts`);
+        }
+        lines.push(`- **Features & Enhancements:** ${selectedFeatures.length}`);
+        lines.push(`- **Bug Fixes:** ${selectedBugs.length}`);
+        if (selectedTasks.length > 0) lines.push(`- **Technical Tasks:** ${selectedTasks.length}`);
+        lines.push('');
+
+        function appendMdSection(secTitle, emoji, items) {
+          if (!items || items.length === 0) return;
+          lines.push(`### ${emoji} ${secTitle} (${items.length})`);
+          items.forEach((t) => {
+            const idPart = includeLinks && t.url
+              ? `[#${t.adoId}](${t.url})`
+              : `#${t.adoId}`;
+            const pointsPart = includePoints && t.storyPoints != null ? ` \`(${t.storyPoints} pts)\`` : '';
+            const assigneePart = includeContributors && t.assignedTo ? ` — *${t.assignedTo}*` : '';
+            lines.push(`- **${idPart}**: ${t.title}${pointsPart}${assigneePart}`);
+
+            if (includeNotes && t.notes && t.notes.length > 0) {
+              t.notes.forEach((n) => {
+                const noteText = n.text || '';
+                lines.push(`  - 📝 *Note:* ${noteText}`);
+              });
+            }
+          });
+          lines.push('');
+        }
+
+        appendMdSection('Features & Enhancements', '🚀', selectedFeatures);
+        appendMdSection('Bug Fixes & Improvements', '🐛', selectedBugs);
+        appendMdSection('Technical Tasks & Maintenance', '🛠', selectedTasks);
+        appendMdSection('Other Work Items', '📋', selectedOther);
+
+        if (includeContributors && activeContributors.length > 0) {
+          lines.push('### 👥 Contributors');
+          lines.push(activeContributors.map((c) => `- ${c}`).join('\n'));
+          lines.push('');
+        }
+
+        return lines.join('\n');
+      }
+
+      if (isHtml) {
+        const parts = [];
+        parts.push(`<h1>🚀 ${escapeHtml(title)}</h1>`);
+        parts.push(`<p><em>Generated on ${dateStr} &bull; Scope: ${escapeHtml(currentIteration || 'All Sprints')}</em></p>`);
+        parts.push(`<h3>📊 Release Summary</h3>`);
+        parts.push(`<ul>`);
+        parts.push(`  <li><strong>Deliverables:</strong> ${totalItems} work items</li>`);
+        if (includePoints && totalPoints > 0) {
+          parts.push(`  <li><strong>Story Points:</strong> ${Math.round(totalPoints * 10) / 10} pts</li>`);
+        }
+        parts.push(`  <li><strong>Features:</strong> ${selectedFeatures.length} | <strong>Bug Fixes:</strong> ${selectedBugs.length}</li>`);
+        parts.push(`</ul>`);
+
+        function appendHtmlSection(secTitle, emoji, items) {
+          if (!items || items.length === 0) return;
+          parts.push(`<h3>${emoji} ${escapeHtml(secTitle)} (${items.length})</h3>`);
+          parts.push(`<ul>`);
+          items.forEach((t) => {
+            const linkHtml = includeLinks && t.url
+              ? `<a href="${escapeHtml(t.url)}" target="_blank">#${t.adoId}</a>`
+              : `#${t.adoId}`;
+            const ptsHtml = includePoints && t.storyPoints != null ? ` <code>(${t.storyPoints} pts)</code>` : '';
+            const assignHtml = includeContributors && t.assignedTo ? ` <em>(${escapeHtml(t.assignedTo)})</em>` : '';
+            let noteHtml = '';
+            if (includeNotes && t.notes && t.notes.length > 0) {
+              noteHtml = `<ul>${t.notes.map((n) => `<li>📝 <em>Note:</em> ${escapeHtml(n.text || '')}</li>`).join('')}</ul>`;
+            }
+            parts.push(`  <li><strong>${linkHtml}</strong>: ${escapeHtml(t.title)}${ptsHtml}${assignHtml}${noteHtml}</li>`);
+          });
+          parts.push(`</ul>`);
+        }
+
+        appendHtmlSection('Features & Enhancements', '🚀', selectedFeatures);
+        appendHtmlSection('Bug Fixes & Improvements', '🐛', selectedBugs);
+        appendHtmlSection('Technical Tasks & Maintenance', '🛠', selectedTasks);
+        appendHtmlSection('Other Items', '📋', selectedOther);
+
+        if (includeContributors && activeContributors.length > 0) {
+          parts.push(`<h3>👥 Contributors</h3>`);
+          parts.push(`<ul>${activeContributors.map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>`);
+        }
+
+        return parts.join('\n');
+      }
+
+      // Plain text
+      const plain = [];
+      plain.push(`RELEASE NOTES: ${title.toUpperCase()}`);
+      plain.push(`Date: ${dateStr} | Scope: ${currentIteration || 'All Sprints'}`);
+      plain.push('--------------------------------------------------');
+      plain.push(`SUMMARY: ${totalItems} items delivered (${totalPoints} pts)`);
+      plain.push(`Features: ${selectedFeatures.length} | Bugs Fixed: ${selectedBugs.length} | Tasks: ${selectedTasks.length}`);
+      plain.push('');
+
+      function appendPlainSection(secTitle, items) {
+        if (!items || items.length === 0) return;
+        plain.push(`${secTitle.toUpperCase()} (${items.length}):`);
+        items.forEach((t) => {
+          const pts = includePoints && t.storyPoints != null ? ` (${t.storyPoints} pts)` : '';
+          const who = includeContributors && t.assignedTo ? ` [${t.assignedTo}]` : '';
+          plain.push(` • #${t.adoId}: ${t.title}${pts}${who}`);
+          if (includeNotes && t.notes && t.notes.length > 0) {
+            t.notes.forEach((n) => plain.push(`    - Note: ${n.text}`));
+          }
+        });
+        plain.push('');
+      }
+
+      appendPlainSection('Features & Enhancements', selectedFeatures);
+      appendPlainSection('Bug Fixes & Resolved Issues', selectedBugs);
+      appendPlainSection('Technical Tasks', selectedTasks);
+      appendPlainSection('Other Items', selectedOther);
+
+      if (includeContributors && activeContributors.length > 0) {
+        plain.push(`CONTRIBUTORS: ${activeContributors.join(', ')}`);
+      }
+
+      return plain.join('\n');
+    }
+
+    function updatePreviewOnly() {
+      const ta = document.getElementById('rn-preview-textarea');
+      if (ta) ta.value = generateContent();
+      const chip = document.getElementById('rn-stats-chip');
+      if (chip) {
+        chip.textContent = `${checkedTickets.size} item${checkedTickets.size !== 1 ? 's' : ''} selected`;
+      }
+    }
+
+    function renderModalHtml() {
+      const iterOptions = ['<option value="">All Sprints / Iterations</option>']
+        .concat(
+          iterationsList.map(
+            (it) => `<option value="${escapeAttr(it)}" ${it === currentIteration ? 'selected' : ''}>${escapeHtml(it)}</option>`
+          )
+        )
+        .join('');
+
+      function renderCategoryChecklist(catTitle, emoji, items) {
+        if (!items || items.length === 0) return '';
+        const rows = items
+          .map((t) => {
+            const isChecked = checkedTickets.has(t.id);
+            const notesCount = (t.notes || []).length;
+            const pointsBadge = t.storyPoints != null ? `<span class="kanban-tag kanban-tag-points" style="font-size:10px">${t.storyPoints}p</span>` : '';
+            return `
+              <label class="rn-item-row">
+                <input type="checkbox" class="rn-checkbox" data-id="${t.id}" ${isChecked ? 'checked' : ''} />
+                <div class="rn-item-body">
+                  <div>
+                    <strong>#${t.adoId}</strong>: ${escapeHtml(t.title || 'Untitled')}
+                    ${pointsBadge}
+                    <span class="status-badge" data-status="${getStatusClass(t.state)}" style="font-size:9px;padding:1px 5px">${escapeHtml(t.state || 'Done')}</span>
+                  </div>
+                  ${notesCount > 0 ? `<div class="rn-item-notes-preview">📝 ${escapeHtml(t.notes[0].text)}${notesCount > 1 ? ` (+${notesCount - 1} more note${notesCount > 2 ? 's' : ''})` : ''}</div>` : ''}
+                </div>
+              </label>
+            `;
+          })
+          .join('');
+
+        return `
+          <div class="rn-category-section">
+            <div class="rn-category-header">
+              <span class="rn-category-title">${emoji} ${catTitle}</span>
+              <span class="rn-category-count">${items.length}</span>
+            </div>
+            <div class="rn-items-container">
+              ${rows}
+            </div>
+          </div>
+        `;
+      }
+
+      const featuresHtml = renderCategoryChecklist('Features & Enhancements', '🚀', data.categories?.features);
+      const bugsHtml = renderCategoryChecklist('Bug Fixes & Resolved Issues', '🐛', data.categories?.bugs);
+      const tasksHtml = renderCategoryChecklist('Technical Tasks & Maintenance', '🛠', data.categories?.tasks);
+      const otherHtml = renderCategoryChecklist('Other Items', '📋', data.categories?.other);
+
+      const checklistHtml = featuresHtml + bugsHtml + tasksHtml + otherHtml || '<p style="color:var(--text-muted);font-size:12px;padding:20px 0;text-align:center">No tickets found for this scope.</p>';
+
+      overlay.innerHTML = `
+        <div class="modal-content release-notes-modal-content">
+          <div class="modal-header">
+            <div class="modal-title" style="display:flex;align-items:center;gap:8px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;color:#a78bfa">
+                <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/>
+                <path d="M6 6h10"/><path d="M6 10h10"/><path d="M6 14h6"/>
+              </svg>
+              <span>Release Notes Builder</span>
+            </div>
+            <button class="modal-close" id="rn-close-btn">&times;</button>
+          </div>
+
+          <div class="rn-layout-grid">
+            <!-- Left: Configurations and Checklist -->
+            <div class="rn-selector-column">
+              <div class="rn-config-card">
+                <div class="rn-form-group">
+                  <label for="rn-title-input">Release Title / Version</label>
+                  <input type="text" id="rn-title-input" class="rn-input" value="${escapeAttr(title)}" placeholder="e.g. Release v2.4.0 — Sprint 17" />
+                </div>
+
+                <div class="rn-form-group">
+                  <label for="rn-iteration-select">Sprint / Iteration</label>
+                  <select id="rn-iteration-select" class="rn-input">
+                    ${iterOptions}
+                  </select>
+                </div>
+
+                <div class="rn-form-group">
+                  <label>Scope</label>
+                  <div class="rn-pills-row" id="rn-scope-pills">
+                    <button class="rn-pill-btn${currentScope === 'completed' ? ' active' : ''}" data-scope="completed">Completed Only</button>
+                    <button class="rn-pill-btn${currentScope === 'all' ? ' active' : ''}" data-scope="all">All Tracked</button>
+                  </div>
+                </div>
+
+                <div class="rn-options-row">
+                  <label class="rn-option-label">
+                    <input type="checkbox" id="rn-opt-notes" ${includeNotes ? 'checked' : ''} />
+                    <span>Include Notes</span>
+                  </label>
+                  <label class="rn-option-label">
+                    <input type="checkbox" id="rn-opt-points" ${includePoints ? 'checked' : ''} />
+                    <span>Story Points</span>
+                  </label>
+                  <label class="rn-option-label">
+                    <input type="checkbox" id="rn-opt-links" ${includeLinks ? 'checked' : ''} />
+                    <span>DevOps Links</span>
+                  </label>
+                  <label class="rn-option-label">
+                    <input type="checkbox" id="rn-opt-contributors" ${includeContributors ? 'checked' : ''} />
+                    <span>Contributors</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Ticket Category Checklist -->
+              ${checklistHtml}
+            </div>
+
+            <!-- Right: Live Preview & Export -->
+            <div class="rn-preview-column">
+              <div class="rn-preview-header">
+                <div class="standup-format-group" id="rn-format-group">
+                  <button class="standup-pill-btn${currentFormat === 'markdown' ? ' active' : ''}" data-format="markdown">Markdown</button>
+                  <button class="standup-pill-btn${currentFormat === 'html' ? ' active' : ''}" data-format="html">HTML</button>
+                  <button class="standup-pill-btn${currentFormat === 'plaintext' ? ' active' : ''}" data-format="plaintext">Plain Text</button>
+                </div>
+                <span class="rn-stats-chip" id="rn-stats-chip">${checkedTickets.size} items selected</span>
+              </div>
+
+              <textarea class="rn-textarea" id="rn-preview-textarea" spellcheck="false">${escapeHtml(generateContent())}</textarea>
+
+              <div class="rn-footer-actions">
+                <button class="btn-ghost" id="rn-cancel-btn">Close</button>
+                <div class="rn-footer-right">
+                  <button class="btn-download-rn" id="btn-download-rn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Download</span>
+                  </button>
+                  <button class="btn-copy-standup" id="btn-copy-rn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>Copy</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      bindEvents();
+    }
+
+    function bindEvents() {
+      document.getElementById('rn-close-btn')?.addEventListener('click', hideModal);
+      document.getElementById('rn-cancel-btn')?.addEventListener('click', hideModal);
+
+      // Title input
+      const titleInput = document.getElementById('rn-title-input');
+      if (titleInput) {
+        titleInput.addEventListener('input', (e) => {
+          title = e.target.value.trim() || 'Release Notes';
+          updatePreviewOnly();
+        });
+      }
+
+      // Checkboxes for individual tickets
+      overlay.querySelectorAll('.rn-checkbox').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          const id = Number(cb.dataset.id);
+          if (cb.checked) checkedTickets.add(id);
+          else checkedTickets.delete(id);
+          updatePreviewOnly();
+        });
+      });
+
+      // Options
+      document.getElementById('rn-opt-notes')?.addEventListener('change', (e) => {
+        includeNotes = e.target.checked;
+        updatePreviewOnly();
+      });
+      document.getElementById('rn-opt-points')?.addEventListener('change', (e) => {
+        includePoints = e.target.checked;
+        updatePreviewOnly();
+      });
+      document.getElementById('rn-opt-links')?.addEventListener('change', (e) => {
+        includeLinks = e.target.checked;
+        updatePreviewOnly();
+      });
+      document.getElementById('rn-opt-contributors')?.addEventListener('change', (e) => {
+        includeContributors = e.target.checked;
+        updatePreviewOnly();
+      });
+
+      // Scope pills
+      overlay.querySelectorAll('#rn-scope-pills .rn-pill-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const newScope = btn.dataset.scope;
+          if (newScope === currentScope) return;
+          currentScope = newScope;
+          overlay.querySelectorAll('#rn-scope-pills .rn-pill-btn').forEach((b) => b.classList.toggle('active', b.dataset.scope === currentScope));
+          if (onScopeChange) {
+            btn.textContent = 'Loading…';
+            const fresh = await onScopeChange({ iterationPath: currentIteration, scope: currentScope });
+            if (fresh) {
+              data = fresh;
+              checkedTickets = getAllItemIds(data);
+              renderModalHtml();
+            }
+          }
+        });
+      });
+
+      // Iteration select change
+      const iterSelect = document.getElementById('rn-iteration-select');
+      if (iterSelect) {
+        iterSelect.addEventListener('change', async (e) => {
+          currentIteration = e.target.value;
+          if (currentIteration && !titleInput?.value.trim()) {
+            title = currentIteration.split('\\').pop();
+          }
+          if (onScopeChange) {
+            const fresh = await onScopeChange({ iterationPath: currentIteration, scope: currentScope });
+            if (fresh) {
+              data = fresh;
+              checkedTickets = getAllItemIds(data);
+              renderModalHtml();
+            }
+          }
+        });
+      }
+
+      // Format pills
+      overlay.querySelectorAll('#rn-format-group .standup-pill-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          currentFormat = btn.dataset.format;
+          overlay.querySelectorAll('#rn-format-group .standup-pill-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          updatePreviewOnly();
+        });
+      });
+
+      // Copy button
+      const copyBtn = document.getElementById('btn-copy-rn');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+          const ta = document.getElementById('rn-preview-textarea');
+          const content = ta ? ta.value : generateContent();
+          try {
+            await navigator.clipboard.writeText(content);
+            copyBtn.classList.add('copied');
+            copyBtn.innerHTML = `
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M20 6 9 17l-5-5"/></svg>
+              <span>Copied! 🎉</span>
+            `;
+            showToast('Release Notes copied to clipboard!', 'success');
+            setTimeout(() => {
+              copyBtn.classList.remove('copied');
+              copyBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              `;
+            }, 2500);
+          } catch {
+            showToast('Failed to copy. Please copy manually from the editor.', 'warning');
+          }
+        });
+      }
+
+      // Download button
+      const downloadBtn = document.getElementById('btn-download-rn');
+      if (downloadBtn) {
+        downloadBtn.addEventListener('click', () => {
+          const ta = document.getElementById('rn-preview-textarea');
+          const content = ta ? ta.value : generateContent();
+          const ext = currentFormat === 'markdown' ? 'md' : (currentFormat === 'html' ? 'html' : 'txt');
+          const mime = currentFormat === 'markdown' ? 'text/markdown;charset=utf-8' : (currentFormat === 'html' ? 'text/html;charset=utf-8' : 'text/plain;charset=utf-8');
+          const cleanTitle = (title || 'Release_Notes').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+          const filename = `${cleanTitle}.${ext}`;
+
+          const blob = new Blob([content], { type: mime });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast(`Downloaded ${filename}!`, 'success');
+        });
+      }
+    }
+
+    renderModalHtml();
+    overlay.offsetHeight;
+    overlay.classList.add('visible');
+  }
+
   function showAddTicketModal() {
     showModal(
       'Track a Work Item',
@@ -2176,6 +2662,7 @@ const UI = (() => {
     showEditNoteModal,
     showEditPersonalNoteModal,
     showStandupModal,
+    showReleaseNotesModal,
     updateConnectionStatus,
     updateNotificationCount,
     updateDesktopNotificationBtn,

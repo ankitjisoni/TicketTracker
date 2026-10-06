@@ -144,6 +144,14 @@ const App = (() => {
         body: JSON.stringify({ state }),
       });
     },
+
+    getReleaseNotes({ iterationPath = '', scope = 'completed', version = '' } = {}) {
+      const q = new URLSearchParams();
+      if (iterationPath) q.set('iterationPath', iterationPath);
+      if (scope) q.set('scope', scope);
+      if (version) q.set('version', version);
+      return this._fetch(`/api/release-notes?${q.toString()}`);
+    },
   };
 
   /* ----------------------------------------------------------
@@ -291,14 +299,15 @@ const App = (() => {
     } catch { /* audio not available */ }
   }
 
-  function sendDesktopNotification({ title, body, ticketId }) {
+  function sendDesktopNotification({ title, body, ticketId, requireInteraction = false }) {
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
       try {
         const notif = new Notification(title, {
           body,
           icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2306b6d4"><circle cx="12" cy="12" r="10"/></svg>',
-          tag: `ticket-${ticketId}-${Date.now()}`,
+          tag: `ticket-${ticketId || Date.now()}`,
+          requireInteraction,
         });
         notif.onclick = () => {
           window.focus();
@@ -310,6 +319,26 @@ const App = (() => {
         console.warn('[notif] Failed to create desktop notification:', err);
       }
     }
+  }
+
+  async function testDesktopNotification() {
+    if (!('Notification' in window)) {
+      UI.showToast('Desktop notifications are not supported in this browser.', 'warning');
+      return;
+    }
+
+    if (Notification.permission !== 'granted') {
+      const granted = await requestNotificationPermission();
+      if (!granted) return;
+    }
+
+    playBeep();
+    sendDesktopNotification({
+      title: 'Ticket Tracker Notifications Active 🚀',
+      body: 'Native OS desktop notifications are active on Windows! You will be alerted when ticket states change.',
+      ticketId: selectedTicketId,
+    });
+    UI.showToast('Test desktop notification sent!', 'success');
   }
 
   async function requestNotificationPermission() {
@@ -388,6 +417,11 @@ const App = (() => {
       if (ticket) {
         tickets.push(ticket);
         renderFilteredList();
+        sendDesktopNotification({
+          title: `Work Item #${adoId} Tracked 📋`,
+          body: ticket.title || 'Work item added to tracker',
+          ticketId: ticket.id,
+        });
         UI.showToast(`Ticket #${adoId} added successfully!`, 'success');
       }
     } catch { /* handled in _fetch */ }
@@ -419,6 +453,13 @@ const App = (() => {
         if (idx !== -1) tickets[idx] = updated;
         renderFilteredList();
         if (selectedTicketId === id) UI.setCommittedButtonState(updated.code_committed);
+        if (nextValue) {
+          sendDesktopNotification({
+            title: `Ticket #${ticket.ado_id || ticket.adoId} Completed ✅`,
+            body: ticket.title || 'Code committed',
+            ticketId: id,
+          });
+        }
         UI.showToast(
           nextValue ? 'Ticket marked as Completed.' : 'Completed mark removed.',
           'success'
@@ -809,6 +850,34 @@ const App = (() => {
   }
 
   /* ----------------------------------------------------------
+     Release Notes Builder
+     ---------------------------------------------------------- */
+  async function openReleaseNotesBuilder() {
+    try {
+      UI.showToast('Preparing Release Notes…', 'info');
+      const [releaseData, iterations] = await Promise.all([
+        api.getReleaseNotes({ scope: 'completed' }),
+        api.getIterations().catch(() => []),
+      ]);
+
+      const iterationsList = Array.isArray(iterations) ? iterations : [];
+      UI.showReleaseNotesModal(
+        releaseData,
+        async (scopeParams) => {
+          try {
+            return await api.getReleaseNotes(scopeParams);
+          } catch {
+            return null;
+          }
+        },
+        iterationsList
+      );
+    } catch {
+      /* handled in _fetch */
+    }
+  }
+
+  /* ----------------------------------------------------------
      Tab Switching
      ---------------------------------------------------------- */
   function switchToTab(tabName) {
@@ -850,6 +919,12 @@ const App = (() => {
     const standupBtn = document.getElementById('btn-standup-trigger');
     if (standupBtn) {
       standupBtn.addEventListener('click', openDailyStandup);
+    }
+
+    /* Release Notes button */
+    const releaseNotesBtn = document.getElementById('btn-release-notes-trigger');
+    if (releaseNotesBtn) {
+      releaseNotesBtn.addEventListener('click', openReleaseNotesBuilder);
     }
 
     /* FAB click */
@@ -905,6 +980,15 @@ const App = (() => {
       desktopNotifBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         requestNotificationPermission();
+      });
+    }
+
+    /* Test Desktop Alert button */
+    const testNotifBtn = document.getElementById('btn-test-desktop-notif');
+    if (testNotifBtn) {
+      testNotifBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        testDesktopNotification();
       });
     }
 
@@ -1053,7 +1137,10 @@ const App = (() => {
     deletePersonalNote,
     loadPersonalNotes,
     requestNotificationPermission,
+    testDesktopNotification,
+    sendDesktopNotification,
     openDailyStandup,
+    openReleaseNotesBuilder,
     updateTicketState,
     switchToTab,
     init,

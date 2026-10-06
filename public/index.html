@@ -43,6 +43,16 @@
         <span>Daily Standup</span>
       </button>
 
+      <button class="btn-release-notes" id="btn-release-notes-trigger" title="Build and Export Release Notes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/>
+          <path d="M6 6h10"/>
+          <path d="M6 10h10"/>
+          <path d="M6 14h6"/>
+        </svg>
+        <span>Release Notes</span>
+      </button>
+
       <div class="connection-status">
         <span class="connection-dot" id="connection-dot"></span>
         <span id="connection-label">Disconnected</span>
@@ -63,6 +73,9 @@
             <div class="notification-panel-actions">
               <button class="notification-action-btn" id="btn-desktop-notif" title="Enable browser desktop notifications">
                 <span id="desktop-notif-label">Enable Desktop Alerts</span>
+              </button>
+              <button class="notification-action-btn" id="btn-test-desktop-notif" title="Trigger a test desktop OS notification">
+                <span>Test Alert</span>
               </button>
               <button class="notification-clear-btn" id="notification-clear-btn">Clear all</button>
             </div>
