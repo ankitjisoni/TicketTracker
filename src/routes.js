@@ -839,6 +839,8 @@ router.get('/api/release-notes', (req, res) => {
         adoId: t.ado_id,
         title: t.title,
         state: t.state,
+        assignedTo: t.assigned_to,
+        assigned_to: t.assigned_to,
         workItemType: t.work_item_type,
         storyPoints: points,
         priority: t.priority,

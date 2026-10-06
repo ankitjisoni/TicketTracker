@@ -327,6 +327,11 @@ const App = (() => {
       return;
     }
 
+    if (Notification.permission === 'denied') {
+      UI.showToast('Desktop alerts are blocked in site permissions. Click the lock/settings icon in your address bar to allow.', 'warning');
+      return;
+    }
+
     if (Notification.permission !== 'granted') {
       const granted = await requestNotificationPermission();
       if (!granted) return;
@@ -351,19 +356,23 @@ const App = (() => {
       UI.updateDesktopNotificationBtn(true);
       return true;
     }
+    if (Notification.permission === 'denied') {
+      UI.showToast('Notifications are blocked by your browser settings. Click the site settings icon in your address bar to enable.', 'warning');
+      UI.updateDesktopNotificationBtn(false);
+      return false;
+    }
     try {
       const permission = await Notification.requestPermission();
       const granted = permission === 'granted';
       UI.updateDesktopNotificationBtn(granted);
       if (granted) {
         UI.showToast('Desktop notifications enabled!', 'success');
-        try {
-          new Notification('Ticket Tracker', {
-            body: 'Desktop notifications are active. You will receive updates even when this tab is in background.',
-          });
-        } catch { /* ignore */ }
+        sendDesktopNotification({
+          title: 'Ticket Tracker Notifications Enabled 🚀',
+          body: 'Desktop notifications are active. You will receive updates even when this tab is in background.',
+        });
       } else {
-        UI.showToast('Notification permission was denied in browser.', 'warning');
+        UI.showToast('Notification permission was not granted.', 'warning');
       }
       return granted;
     } catch {

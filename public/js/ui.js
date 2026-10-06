@@ -892,7 +892,7 @@ const UI = (() => {
 
       const totalItems = allSelected.length;
       const totalPoints = allSelected.reduce((sum, t) => sum + (t.storyPoints || 0), 0);
-      const activeContributors = Array.from(new Set(allSelected.map((t) => t.assignedTo).filter(Boolean))).sort();
+      const activeContributors = Array.from(new Set(allSelected.map((t) => t.assignedTo || t.assigned_to).filter(Boolean))).sort();
 
       if (isMd) {
         const lines = [];
@@ -917,7 +917,7 @@ const UI = (() => {
               ? `[#${t.adoId}](${t.url})`
               : `#${t.adoId}`;
             const pointsPart = includePoints && t.storyPoints != null ? ` \`(${t.storyPoints} pts)\`` : '';
-            const assigneePart = includeContributors && t.assignedTo ? ` — *${t.assignedTo}*` : '';
+            const assigneePart = includeContributors && (t.assignedTo || t.assigned_to) ? ` — *${t.assignedTo || t.assigned_to}*` : '';
             lines.push(`- **${idPart}**: ${t.title}${pointsPart}${assigneePart}`);
 
             if (includeNotes && t.notes && t.notes.length > 0) {
@@ -966,7 +966,7 @@ const UI = (() => {
               ? `<a href="${escapeHtml(t.url)}" target="_blank">#${t.adoId}</a>`
               : `#${t.adoId}`;
             const ptsHtml = includePoints && t.storyPoints != null ? ` <code>(${t.storyPoints} pts)</code>` : '';
-            const assignHtml = includeContributors && t.assignedTo ? ` <em>(${escapeHtml(t.assignedTo)})</em>` : '';
+            const assignHtml = includeContributors && (t.assignedTo || t.assigned_to) ? ` <em>(${escapeHtml(t.assignedTo || t.assigned_to)})</em>` : '';
             let noteHtml = '';
             if (includeNotes && t.notes && t.notes.length > 0) {
               noteHtml = `<ul>${t.notes.map((n) => `<li>📝 <em>Note:</em> ${escapeHtml(n.text || '')}</li>`).join('')}</ul>`;
@@ -1003,7 +1003,7 @@ const UI = (() => {
         plain.push(`${secTitle.toUpperCase()} (${items.length}):`);
         items.forEach((t) => {
           const pts = includePoints && t.storyPoints != null ? ` (${t.storyPoints} pts)` : '';
-          const who = includeContributors && t.assignedTo ? ` [${t.assignedTo}]` : '';
+          const who = includeContributors && (t.assignedTo || t.assigned_to) ? ` [${t.assignedTo || t.assigned_to}]` : '';
           plain.push(` • #${t.adoId}: ${t.title}${pts}${who}`);
           if (includeNotes && t.notes && t.notes.length > 0) {
             t.notes.forEach((n) => plain.push(`    - Note: ${n.text}`));
@@ -1034,9 +1034,17 @@ const UI = (() => {
     }
 
     function renderModalHtml() {
+      const iterSet = new Set(iterationsList);
+      ['features', 'bugs', 'tasks', 'other'].forEach((k) => {
+        (data.categories?.[k] || []).forEach((t) => {
+          if (t.iterationPath) iterSet.add(t.iterationPath);
+        });
+      });
+      const allIterList = Array.from(iterSet).filter(Boolean).sort();
+
       const iterOptions = ['<option value="">All Sprints / Iterations</option>']
         .concat(
-          iterationsList.map(
+          allIterList.map(
             (it) => `<option value="${escapeAttr(it)}" ${it === currentIteration ? 'selected' : ''}>${escapeHtml(it)}</option>`
           )
         )
