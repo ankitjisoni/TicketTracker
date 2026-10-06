@@ -63,6 +63,10 @@ const App = (() => {
       return this._fetch(`/api/tickets/${id}/refresh`);
     },
 
+    refreshAllTickets() {
+      return this._fetch('/api/tickets/refresh-all', { method: 'POST' });
+    },
+
     setCodeCommitted(id, committed) {
       return this._fetch(`/api/tickets/${id}/code-committed`, {
         method: 'PATCH',
@@ -184,13 +188,58 @@ const App = (() => {
       } catch { /* ignore parse errors */ }
     });
 
+    eventSource.addEventListener('ticket_updated', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        handleTicketUpdated(data);
+      } catch { /* ignore parse errors */ }
+    });
+
     /* Generic message fallback */
     eventSource.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        if (data.type === 'status_change') handleStatusChange(data);
+        if (data.type === 'ticket_updated') handleTicketUpdated(data);
+        else if (data.type === 'status_change') handleStatusChange(data);
       } catch { /* ignore */ }
     };
+  }
+
+  function handleTicketUpdated(data) {
+    if (!data) return;
+    const ticketId = data.ticketId || data.id || (data.ticket && data.ticket.id);
+    const idx = tickets.findIndex((t) => t.id === ticketId);
+
+    if (idx !== -1) {
+      if (data.ticket) {
+        tickets[idx] = { ...tickets[idx], ...data.ticket };
+      } else {
+        if (data.newState) tickets[idx].state = data.newState;
+        if (data.newAssignee !== undefined) tickets[idx].assigned_to = data.newAssignee;
+        if (data.title) tickets[idx].title = data.title;
+        if (data.changedAt) tickets[idx].changed_date = data.changedAt;
+      }
+      renderFilteredList();
+      if (selectedTicketId === ticketId) {
+        loadTicketDetail(selectedTicketId);
+      }
+    } else if (data.ticket) {
+      tickets.unshift(data.ticket);
+      renderFilteredList();
+    }
+
+    if (data.assigneeChanged) {
+      const from = data.oldAssignee || 'Unassigned';
+      const to = data.newAssignee || 'Unassigned';
+      UI.showToast(`#${data.adoId || ''}: Assigned to ${to} (was ${from})`, 'info');
+      sendDesktopNotification({
+        title: `Work Item #${data.adoId} Reassigned 👤`,
+        body: `Now assigned to ${to} (was ${from})`,
+        ticketId,
+      });
+    } else if (data.stateChanged) {
+      handleStatusChange(data);
+    }
   }
 
   function handleStatusChange(data) {
@@ -199,6 +248,9 @@ const App = (() => {
     if (idx !== -1) {
       if (data.newState || data.new_state) {
         tickets[idx].state = data.newState || data.new_state;
+      }
+      if (data.assignedTo || data.assigned_to) {
+        tickets[idx].assigned_to = data.assignedTo || data.assigned_to;
       }
       if (data.title) tickets[idx].title = data.title;
       tickets[idx].last_fetched_at = data.changedAt || data.timestamp || new Date().toISOString();
@@ -1086,7 +1138,16 @@ const App = (() => {
     const boardRefreshBtn = document.getElementById('btn-board-refresh');
     if (boardRefreshBtn) {
       boardRefreshBtn.addEventListener('click', async () => {
-        UI.showToast('Refreshing all tickets…', 'info');
+        UI.showToast('Syncing all tickets from Azure DevOps…', 'info');
+        try {
+          const fresh = await api.refreshAllTickets();
+          if (Array.isArray(fresh)) {
+            tickets = fresh;
+            renderFilteredList();
+            UI.showToast('All tickets live synced with Azure DevOps!', 'success');
+            return;
+          }
+        } catch { /* fallback */ }
         await loadTickets();
       });
     }

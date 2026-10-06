@@ -116,11 +116,12 @@ router.get('/api/tickets/:id/refresh', async (req, res) => {
         .json({ error: 'Failed to fetch work item from Azure DevOps' });
     }
 
-    // Detect state change while refreshing
-    if (ticket.state !== item.state) {
-      db.addStatusChange(id, ticket.state, item.state);
+    // Detect state & assignee changes while refreshing
+    const stateChanged = ticket.state !== item.state;
+    const assigneeChanged = (ticket.assigned_to || '') !== (item.assignedTo || '');
 
-      // Broadcast to SSE clients
+    if (stateChanged) {
+      db.addStatusChange(id, ticket.state, item.state);
       poller.broadcast('status_change', {
         type: 'status_change',
         ticketId: id,
@@ -128,15 +129,48 @@ router.get('/api/tickets/:id/refresh', async (req, res) => {
         title: item.title,
         oldState: ticket.state,
         newState: item.state,
-        changedAt: new Date().toISOString(),
+        assignedTo: item.assignedTo,
+        changedAt: item.changedDate || new Date().toISOString(),
       });
     }
 
     const updated = db.updateTicketFromAdo(id, item);
+
+    if (stateChanged || assigneeChanged) {
+      poller.broadcast('ticket_updated', {
+        type: 'ticket_updated',
+        ticket: updated,
+        ticketId: id,
+        adoId: ticket.ado_id,
+        title: item.title,
+        oldState: ticket.state,
+        newState: item.state,
+        oldAssignee: ticket.assigned_to,
+        newAssignee: item.assignedTo,
+        stateChanged,
+        assigneeChanged,
+        changedAt: item.changedDate || new Date().toISOString(),
+      });
+    }
     res.json(updated);
   } catch (err) {
     console.error('[routes] GET /api/tickets/:id/refresh error:', err.message);
     res.status(500).json({ error: 'Failed to refresh ticket' });
+  }
+});
+
+/**
+ * POST /api/tickets/refresh-all
+ * Force an immediate live sync of all tracked tickets against Azure DevOps.
+ */
+router.post('/api/tickets/refresh-all', async (_req, res) => {
+  try {
+    await poller.poll();
+    const tickets = db.getAllTickets();
+    res.json(tickets);
+  } catch (err) {
+    console.error('[routes] POST /api/tickets/refresh-all error:', err.message);
+    res.status(500).json({ error: 'Failed to refresh tickets from Azure DevOps' });
   }
 });
 

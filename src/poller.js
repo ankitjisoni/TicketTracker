@@ -98,30 +98,56 @@ async function poll() {
 
       const oldState = ticket.state;
       const newState = item.state;
+      const oldAssignee = ticket.assigned_to;
+      const newAssignee = item.assignedTo;
 
-      // Always update fields to keep data fresh
-      db.updateTicketFromAdo(ticket.id, item);
+      const stateChanged = oldState !== newState;
+      const assigneeChanged = (oldAssignee || '') !== (newAssignee || '');
+      const titleChanged = (ticket.title || '') !== (item.title || '');
 
-      // Broadcast only when the workflow *state* actually changed
-      if (oldState !== newState) {
-        const changedAt = new Date().toISOString();
+      // Always update fields in database to keep data fresh
+      const updated = db.updateTicketFromAdo(ticket.id, item);
 
-        // Record in status_history table
+      // Record in status_history table if state changed
+      if (stateChanged) {
         db.addStatusChange(ticket.id, oldState, newState);
+      }
 
-        // Notify SSE clients
-        broadcast('status_change', {
-          type: 'status_change',
+      // Broadcast whenever state, assignee, or title changes!
+      if (stateChanged || assigneeChanged || titleChanged) {
+        const changedAt = item.changedDate || new Date().toISOString();
+
+        if (stateChanged) {
+          broadcast('status_change', {
+            type: 'status_change',
+            ticketId: ticket.id,
+            adoId: ticket.ado_id,
+            title: item.title,
+            oldState,
+            newState,
+            assignedTo: newAssignee,
+            changedAt,
+          });
+        }
+
+        broadcast('ticket_updated', {
+          type: 'ticket_updated',
+          ticket: updated,
           ticketId: ticket.id,
           adoId: ticket.ado_id,
           title: item.title,
           oldState,
           newState,
+          oldAssignee,
+          newAssignee,
+          stateChanged,
+          assigneeChanged,
+          titleChanged,
           changedAt,
         });
 
         console.log(
-          `[poller] State change detected — ADO #${ticket.ado_id}: "${oldState}" → "${newState}"`
+          `[poller] Update detected — ADO #${ticket.ado_id}: ${stateChanged ? `State: "${oldState}" → "${newState}" ` : ''}${assigneeChanged ? `Assignee: "${oldAssignee}" → "${newAssignee}" ` : ''}${titleChanged ? 'Title updated ' : ''}`
         );
       }
     }
@@ -167,6 +193,7 @@ module.exports = {
   addClient,
   removeClient,
   broadcast,
+  poll,
   startPolling,
   stopPolling,
 };
