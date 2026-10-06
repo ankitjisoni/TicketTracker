@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Azure DevOps Ticket Tracker</title>
+  <meta name="description" content="Track and manage Azure DevOps work items with real-time status updates, commit notes, and status history." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/index.css" />
+</head>
+<body>
+
+  <!-- ======================================================
+       HEADER
+       ====================================================== -->
+  <header class="app-header">
+    <div class="header-left">
+      <!-- Radar / tracking SVG icon -->
+      <svg class="app-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10" opacity="0.3"/>
+        <circle cx="12" cy="12" r="6" opacity="0.5"/>
+        <circle cx="12" cy="12" r="2"/>
+        <line x1="12" y1="2" x2="12" y2="6"/>
+        <line x1="12" y1="18" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="6" y2="12"/>
+        <line x1="18" y1="12" x2="22" y2="12"/>
+      </svg>
+      <div class="app-title-group">
+        <span class="app-title">Ticket Tracker</span>
+        <span class="app-subtitle">Azure DevOps<span class="app-credit">Developed by Ankit Soni</span></span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="connection-status">
+        <span class="connection-dot" id="connection-dot"></span>
+        <span id="connection-label">Disconnected</span>
+      </div>
+
+      <div class="notification-wrapper" id="notification-wrapper">
+        <button class="notification-bell" id="notification-bell" title="Notifications">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+          </svg>
+          <span class="notification-badge" id="notification-badge">0</span>
+        </button>
+
+        <div class="notification-panel" id="notification-panel">
+          <div class="notification-panel-header">
+            <span>Notifications</span>
+            <button class="notification-clear-btn" id="notification-clear-btn">Clear all</button>
+          </div>
+          <div class="notification-panel-list" id="notification-panel-list">
+            <!-- Notification items rendered here -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================================================
+       TAB NAVIGATION
+       ====================================================== -->
+  <nav class="tab-nav" id="tab-nav">
+    <button class="tab-btn active" data-tab="tickets" id="tab-btn-tickets">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/></svg>
+      Tickets
+    </button>
+    <button class="tab-btn" data-tab="workload" id="tab-btn-workload">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Team Workload
+    </button>
+    <button class="tab-btn" data-tab="notes" id="tab-btn-notes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+      Notes
+    </button>
+    <div class="tab-indicator" id="tab-indicator"></div>
+  </nav>
+
+  <!-- ======================================================
+       TAB PANEL: TICKETS (existing view)
+       ====================================================== -->
+  <main class="app-main tab-panel active" id="panel-tickets">
+
+    <!-- LEFT PANEL — Ticket List -->
+    <aside class="left-panel">
+      <div class="panel-header">
+        <h2>Tracked Tickets <span class="ticket-count" id="ticket-count">0</span></h2>
+
+        <div class="search-wrapper">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.3-4.3"/>
+          </svg>
+          <input
+            type="text"
+            class="search-input"
+            id="search-input"
+            placeholder="Search by ID or title…"
+          />
+        </div>
+
+        <div class="commit-filter-group" id="commit-filter-group">
+          <button class="commit-filter-btn active" data-filter="all">All</button>
+          <button class="commit-filter-btn" data-filter="committed">Completed</button>
+          <button class="commit-filter-btn" data-filter="not-committed">Not Completed</button>
+        </div>
+      </div>
+
+      <div id="ticket-list">
+        <!-- Ticket cards rendered here by UI.renderTicketList -->
+      </div>
+
+      <!-- Floating Add Button -->
+      <button class="fab" id="fab-add" title="Track a new work item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5v14"/>
+          <path d="M5 12h14"/>
+        </svg>
+      </button>
+    </aside>
+
+    <!-- RIGHT PANEL — Detail + Notes -->
+    <section class="right-panel">
+      <div id="ticket-detail">
+        <!-- Empty state rendered here on load, detail rendered on selection -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ======================================================
+       TAB PANEL: TEAM WORKLOAD
+       ====================================================== -->
+  <main class="app-main tab-panel" id="panel-workload">
+    <div class="workload-container">
+
+      <!-- Filter Card -->
+      <div class="workload-filter-card" id="workload-filter-card">
+        <h2 class="workload-filter-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Search Filters
+        </h2>
+        <div class="workload-filter-grid">
+          <div class="filter-group">
+            <label for="wl-date-from">Date Range — From</label>
+            <input type="date" id="wl-date-from" class="filter-input" />
+          </div>
+          <div class="filter-group">
+            <label for="wl-date-to">Date Range — To</label>
+            <input type="date" id="wl-date-to" class="filter-input" />
+          </div>
+          <div class="filter-group filter-group-wide">
+            <label>Assigned To</label>
+            <div class="assignee-multiselect" id="wl-assignee-multiselect">
+              <div class="assignee-multiselect-trigger" id="wl-assignee-trigger">
+                <span class="assignee-multiselect-placeholder" id="wl-assignee-placeholder">Select team members (leave empty for all)</span>
+                <span class="assignee-multiselect-tags" id="wl-assignee-tags"></span>
+                <svg class="assignee-multiselect-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+              <div class="assignee-dropdown" id="wl-assignee-dropdown">
+                <div class="assignee-source-toggle" id="wl-assignee-source-toggle"></div>
+                <div class="assignee-dropdown-search">
+                  <input type="text" class="assignee-search-input" id="wl-assignee-search" placeholder="Search members…" />
+                </div>
+                <div class="assignee-dropdown-list" id="wl-assignee-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="workload-filter-actions">
+          <button class="btn-primary btn-search" id="btn-wl-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            Search
+          </button>
+          <button class="btn-ghost" id="btn-wl-clear">Clear</button>
+        </div>
+      </div>
+
+      <!-- Results Area -->
+      <div class="workload-results" id="workload-results">
+        <div class="workload-empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:80px;height:80px;opacity:.2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <h3>Team Workload</h3>
+          <p>Set your filters above and click <strong>Search</strong> to see how many tickets each team member has worked on.</p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ======================================================
+       TAB PANEL: NOTES
+       ====================================================== -->
+  <main class="app-main tab-panel" id="panel-notes">
+    <div class="notes-container">
+      <section class="notes-editor">
+        <div class="notes-editor-header">
+          <div>
+            <span class="notes-kicker">Personal Notes</span>
+            <h2>Save Notes</h2>
+          </div>
+          <span class="notes-total" id="notes-total">0 notes</span>
+        </div>
+
+        <div class="notes-form-grid">
+          <div class="notes-field">
+            <label for="personal-note-title">Heading</label>
+            <input type="text" id="personal-note-title" placeholder="Add a clear heading" maxlength="120" />
+          </div>
+          <div class="notes-field">
+            <label for="personal-note-description">Description</label>
+            <textarea id="personal-note-description" placeholder="Write the details here"></textarea>
+          </div>
+        </div>
+
+        <div class="notes-editor-actions">
+          <button class="btn-ghost" id="btn-clear-personal-note">Clear</button>
+          <button class="btn-primary" id="btn-save-personal-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+            Save Note
+          </button>
+        </div>
+      </section>
+
+      <section class="notes-stack-section">
+        <div class="notes-stack-heading">
+          <h3>Notes Stack</h3>
+          <span>Newest first</span>
+        </div>
+        <div class="notes-stack" id="personal-notes-stack">
+          <div class="spinner-wrapper"><div class="spinner"></div></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ======================================================
+       TOAST CONTAINER
+       ====================================================== -->
+  <div id="toast-container"></div>
+
+  <!-- ======================================================
+       MODAL OVERLAY
+       ====================================================== -->
+  <div class="modal-overlay" id="modal-overlay"></div>
+
+  <!-- ======================================================
+       SCRIPTS
+       ====================================================== -->
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>
