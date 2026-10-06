@@ -213,6 +213,13 @@ const App = (() => {
 
     /* Subtle notification beep */
     playBeep();
+
+    /* Desktop OS notification */
+    sendDesktopNotification({
+      title: `ADO #${idLabel}: ${from} → ${to}`,
+      body: data.title || 'Work item status updated',
+      ticketId,
+    });
   }
 
   /* ----------------------------------------------------------
@@ -223,6 +230,9 @@ const App = (() => {
     UI.toggleNotificationPanel(true);
     unreadCount = 0;
     UI.updateNotificationCount(0);
+    if ('Notification' in window) {
+      UI.updateDesktopNotificationBtn(Notification.permission === 'granted');
+    }
   }
 
   function closeNotificationPanel() {
@@ -263,6 +273,57 @@ const App = (() => {
       osc.start();
       osc.stop(ctx.currentTime + 0.3);
     } catch { /* audio not available */ }
+  }
+
+  function sendDesktopNotification({ title, body, ticketId }) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      try {
+        const notif = new Notification(title, {
+          body,
+          icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2306b6d4"><circle cx="12" cy="12" r="10"/></svg>',
+          tag: `ticket-${ticketId}-${Date.now()}`,
+        });
+        notif.onclick = () => {
+          window.focus();
+          switchToTab('tickets');
+          if (ticketId) selectTicket(ticketId);
+          notif.close();
+        };
+      } catch (err) {
+        console.warn('[notif] Failed to create desktop notification:', err);
+      }
+    }
+  }
+
+  async function requestNotificationPermission() {
+    if (!('Notification' in window)) {
+      UI.showToast('Desktop notifications are not supported in this browser.', 'warning');
+      return false;
+    }
+    if (Notification.permission === 'granted') {
+      UI.showToast('Desktop alerts are already enabled.', 'info');
+      UI.updateDesktopNotificationBtn(true);
+      return true;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      const granted = permission === 'granted';
+      UI.updateDesktopNotificationBtn(granted);
+      if (granted) {
+        UI.showToast('Desktop notifications enabled!', 'success');
+        try {
+          new Notification('Ticket Tracker', {
+            body: 'Desktop notifications are active. You will receive updates even when this tab is in background.',
+          });
+        } catch { /* ignore */ }
+      } else {
+        UI.showToast('Notification permission was denied in browser.', 'warning');
+      }
+      return granted;
+    } catch {
+      return false;
+    }
   }
 
   /* ----------------------------------------------------------
@@ -744,6 +805,18 @@ const App = (() => {
       });
     }
 
+    /* Desktop alerts enable button */
+    const desktopNotifBtn = document.getElementById('btn-desktop-notif');
+    if (desktopNotifBtn) {
+      if ('Notification' in window) {
+        UI.updateDesktopNotificationBtn(Notification.permission === 'granted');
+      }
+      desktopNotifBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        requestNotificationPermission();
+      });
+    }
+
     /* Close notification panel when clicking outside it */
     document.addEventListener('click', (e) => {
       const wrapper = document.getElementById('notification-wrapper');
@@ -820,6 +893,7 @@ const App = (() => {
     editPersonalNote,
     deletePersonalNote,
     loadPersonalNotes,
+    requestNotificationPermission,
     switchToTab,
     init,
   };

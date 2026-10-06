@@ -51,7 +51,12 @@
         <div class="notification-panel" id="notification-panel">
           <div class="notification-panel-header">
             <span>Notifications</span>
-            <button class="notification-clear-btn" id="notification-clear-btn">Clear all</button>
+            <div class="notification-panel-actions">
+              <button class="notification-action-btn" id="btn-desktop-notif" title="Enable browser desktop notifications">
+                <span id="desktop-notif-label">Enable Desktop Alerts</span>
+              </button>
+              <button class="notification-clear-btn" id="notification-clear-btn">Clear all</button>
+            </div>
           </div>
           <div class="notification-panel-list" id="notification-panel-list">
             <!-- Notification items rendered here -->

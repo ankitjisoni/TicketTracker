@@ -79,6 +79,13 @@ function initDb() {
       created_at  TEXT DEFAULT (datetime('now')),
       updated_at  TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE INDEX IF NOT EXISTS idx_tickets_ado_id ON tickets(ado_id);
+    CREATE INDEX IF NOT EXISTS idx_tickets_state ON tickets(state);
+    CREATE INDEX IF NOT EXISTS idx_tickets_assigned_to ON tickets(assigned_to);
+    CREATE INDEX IF NOT EXISTS idx_status_history_ticket_id ON status_history(ticket_id);
+    CREATE INDEX IF NOT EXISTS idx_commit_notes_ticket_id ON commit_notes(ticket_id);
+    CREATE INDEX IF NOT EXISTS idx_personal_notes_updated_at ON personal_notes(updated_at);
   `);
 
   // Migrate existing databases that predate the code_committed column

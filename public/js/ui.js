@@ -659,6 +659,21 @@ const UI = (() => {
     }
   }
 
+  function updateDesktopNotificationBtn(granted) {
+    const btn = document.getElementById('btn-desktop-notif');
+    const label = document.getElementById('desktop-notif-label');
+    if (!btn || !label) return;
+    if (granted) {
+      btn.classList.add('active');
+      btn.title = 'Desktop alerts are enabled';
+      label.textContent = 'Alerts On';
+    } else {
+      btn.classList.remove('active');
+      btn.title = 'Click to enable OS desktop notifications';
+      label.textContent = 'Enable Desktop Alerts';
+    }
+  }
+
   /* ----------------------------------------------------------
      Notification dropdown panel
      ---------------------------------------------------------- */
@@ -1093,7 +1108,7 @@ const UI = (() => {
     actionsBar.innerHTML = `
       <button class="btn-export" id="btn-export-excel">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        Export to Excel
+        Export to Excel (CSV)
       </button>
     `;
     container.appendChild(actionsBar);
@@ -1214,7 +1229,8 @@ const UI = (() => {
      ---------------------------------------------------------- */
 
   /**
-   * Export the workload data to an Excel-compatible file.
+   * Export the workload data to an Excel-compatible CSV file with UTF-8 BOM.
+   * Eliminates the Excel format mismatch / corrupt file prompt.
    * @param {object} data — the workload response data
    */
   function exportWorkloadToExcel(data) {
@@ -1226,62 +1242,39 @@ const UI = (() => {
     const dateFrom = data.dateFrom || '';
     const dateTo = data.dateTo || '';
 
-    // Build HTML table for Excel
-    let html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office"
-            xmlns:x="urn:schemas-microsoft-com:office:spreadsheet"
-            xmlns="http://www.w3.org/TR/REC-html40">
-      <head><meta charset="UTF-8">
-      <style>
-        table { border-collapse: collapse; font-family: Calibri, Arial, sans-serif; font-size: 11pt; }
-        th { background-color: #1e3a5f; color: #ffffff; font-weight: bold; padding: 8px 12px; border: 1px solid #0d2137; text-align: left; }
-        td { padding: 6px 12px; border: 1px solid #d0d5dd; vertical-align: top; }
-        tr:nth-child(even) td { background-color: #f2f4f8; }
-        .header-row td { font-weight: bold; font-size: 13pt; background-color: #e8f0fe; border: none; padding: 10px 12px; }
-        .spacer-row td { border: none; height: 10px; }
-      </style>
-      </head>
-      <body>
-      <table>
-        <tr class="header-row"><td colspan="7">Team Workload Report</td></tr>
-        <tr class="header-row"><td colspan="7">Date Range: ${escapeHtml(dateFrom)} — ${escapeHtml(dateTo)}</td></tr>
-        <tr class="spacer-row"><td colspan="7"></td></tr>
-        <tr>
-          <th>Assigned To</th>
-          <th>Ticket ID</th>
-          <th>Title</th>
-          <th>Area</th>
-          <th>Status</th>
-          <th>Type</th>
-          <th>Currently Assigned To</th>
-        </tr>
-    `;
+    const escapeCsv = (str) => {
+      if (str === null || str === undefined) return '""';
+      const s = String(str).replace(/"/g, '""');
+      return `"${s}"`;
+    };
+
+    const rows = [
+      ['Team Workload Report'],
+      [`Date Range: ${dateFrom} to ${dateTo}`],
+      [''],
+      ['Assigned To', 'Ticket ID', 'Title', 'Area Path', 'Status', 'Work Item Type', 'Currently Assigned To'],
+    ];
 
     data.members.forEach((member) => {
       (member.tickets || []).forEach((t) => {
-        html += `
-          <tr>
-            <td>${escapeHtml(member.name)}</td>
-            <td>${t.id}</td>
-            <td>${escapeHtml(t.title || '')}</td>
-            <td>${escapeHtml(t.areaPath || '—')}</td>
-            <td>${escapeHtml(t.state || '')}</td>
-            <td>${escapeHtml(t.workItemType || '')}</td>
-            <td>${escapeHtml(t.assignedTo || 'Unassigned')}</td>
-          </tr>
-        `;
+        rows.push([
+          member.name || '',
+          String(t.id || ''),
+          t.title || '',
+          t.areaPath || '',
+          t.state || '',
+          t.workItemType || '',
+          t.assignedTo || 'Unassigned',
+        ]);
       });
     });
 
-    // Add Summary Section
-    html += `
-        <tr class="spacer-row"><td colspan="7"></td></tr>
-        <tr class="header-row"><td colspan="7">Summary</td></tr>
-    `;
+    rows.push(['']);
+    rows.push(['--- Summary Breakdown ---']);
 
     data.members.forEach((member) => {
       const counts = {};
-      (member.tickets || []).forEach(t => {
+      (member.tickets || []).forEach((t) => {
         const curr = t.assignedTo || 'Unassigned';
         const firstName = curr.split(' ')[0];
         counts[firstName] = (counts[firstName] || 0) + 1;
@@ -1290,33 +1283,24 @@ const UI = (() => {
       if (counts[memberFirstName] === undefined) {
         counts[memberFirstName] = 0;
       }
-      const pad = (n) => n < 10 ? '0' + n : n;
-      const summaryItems = Object.entries(counts).map(([n, c]) => `${escapeHtml(n)}: ${pad(c)}`);
-      
-      const summaryText = `Assigned to: ${escapeHtml(member.name)}, ${summaryItems.join(', ')}, Total ${pad((member.tickets || []).length)}`;
-      html += `
-        <tr>
-          <td colspan="7" style="background-color: #f8fafc; font-weight: bold; border-top: 2px solid #0d2137;">
-            ${summaryText}
-          </td>
-        </tr>
-      `;
+      const pad = (n) => (n < 10 ? '0' + n : n);
+      const summaryItems = Object.entries(counts).map(([n, c]) => `${n}: ${pad(c)}`);
+      const summaryText = `Assigned to: ${member.name}, ${summaryItems.join(', ')}, Total ${pad((member.tickets || []).length)}`;
+      rows.push([summaryText]);
     });
 
-    html += '</table></body></html>';
-
-    // Create downloadable file
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const csvContent = '\uFEFF' + rows.map((r) => r.map(escapeCsv).join(',')).join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Team_Workload_${dateFrom}_to_${dateTo}.xls`;
+    a.download = `Team_Workload_${dateFrom}_to_${dateTo}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    showToast('Excel file downloaded successfully!', 'success');
+    showToast('Workload report exported to CSV (opens cleanly in Excel)!', 'success');
   }
 
   /* ----------------------------------------------------------
@@ -1339,6 +1323,7 @@ const UI = (() => {
     showEditPersonalNoteModal,
     updateConnectionStatus,
     updateNotificationCount,
+    updateDesktopNotificationBtn,
     renderNotificationPanel,
     toggleNotificationPanel,
     isNotificationPanelVisible,
