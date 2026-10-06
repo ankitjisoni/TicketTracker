@@ -2167,7 +2167,7 @@ const UI = (() => {
     const s = String(state).toLowerCase().replace(/[\s\-_]/g, '');
     if (['new', 'proposed', 'todo', 'backlog', 'open'].includes(s)) return 'new';
     if (['active', 'inprogress', 'development', 'committed', 'doing', 'started'].includes(s)) return 'active';
-    if (['resolved', 'readyforqa', 'inqa', 'qa', 'review', 'testing', 'codecomplete'].includes(s)) return 'resolved';
+    if (['resolved', 'readyforqa', 'inqa', 'qa', 'qapassed', 'passedqa', 'review', 'testing', 'codecomplete'].includes(s)) return 'resolved';
     if (['closed', 'done', 'completed', 'removed', 'cancelled'].includes(s)) return 'closed';
     return 'active';
   }
