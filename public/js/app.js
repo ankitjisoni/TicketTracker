@@ -132,6 +132,10 @@ const App = (() => {
     getStandupData(hours = 24) {
       return this._fetch(`/api/standup?hours=${hours}`);
     },
+
+    getIterations() {
+      return this._fetch('/api/iterations');
+    },
   };
 
   /* ----------------------------------------------------------
@@ -540,9 +544,15 @@ const App = (() => {
     if (workloadFiltersLoaded) return;
     try {
       UI.setAssigneeListLoading(true);
-      const pinned = await api.getPinnedTeamMembers();
+      const [pinned, iterations] = await Promise.all([
+        api.getPinnedTeamMembers().catch(() => []),
+        api.getIterations().catch(() => []),
+      ]);
       pinnedMembers = Array.isArray(pinned) ? pinned : [];
       UI.populateAssigneeList(pinnedMembers);
+      if (Array.isArray(iterations)) {
+        UI.populateIterationSelect(iterations);
+      }
       workloadFiltersLoaded = true;
 
       if (pinnedMembers.length === 0) {
@@ -594,6 +604,7 @@ const App = (() => {
   async function searchTeamWorkload() {
     const dateFrom = document.getElementById('wl-date-from')?.value;
     const dateTo = document.getElementById('wl-date-to')?.value;
+    const iterationPath = document.getElementById('wl-iteration-select')?.value?.trim();
     const assignees = UI.getSelectedAssignees();
 
     if (!dateFrom || !dateTo) {
@@ -610,6 +621,9 @@ const App = (() => {
 
     try {
       const body = { dateFrom, dateTo };
+      if (iterationPath) {
+        body.iterationPath = iterationPath;
+      }
       if (assignees.length > 0) {
         body.assignedTo = assignees;
       }
@@ -626,9 +640,11 @@ const App = (() => {
   function clearWorkloadFilters() {
     const dateFrom = document.getElementById('wl-date-from');
     const dateTo = document.getElementById('wl-date-to');
+    const iterationSelect = document.getElementById('wl-iteration-select');
 
     if (dateFrom) dateFrom.value = '';
     if (dateTo) dateTo.value = '';
+    if (iterationSelect) iterationSelect.value = '';
     UI.clearSelectedAssignees();
 
     // Reset results

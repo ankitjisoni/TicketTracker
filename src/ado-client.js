@@ -46,6 +46,16 @@ function parseWorkItem(raw) {
   const changedBy = fields['System.ChangedBy'];
   const createdBy = fields['System.CreatedBy'];
 
+  const storyPointsRaw =
+    fields['Microsoft.VSTS.Scheduling.StoryPoints'] ??
+    fields['Microsoft.VSTS.Scheduling.Effort'] ??
+    fields['Microsoft.VSTS.Scheduling.OriginalEstimate'] ??
+    null;
+  const storyPoints =
+    storyPointsRaw !== null && !isNaN(Number(storyPointsRaw))
+      ? Number(storyPointsRaw)
+      : null;
+
   return {
     id: raw.id,
     title: fields['System.Title'] || null,
@@ -61,6 +71,7 @@ function parseWorkItem(raw) {
     priority: fields['Microsoft.VSTS.Common.Priority'] ?? null,
     areaPath: fields['System.AreaPath'] || null,
     iterationPath: fields['System.IterationPath'] || null,
+    storyPoints,
     teamProject: fields['System.TeamProject'] || null,
     url: raw._links && raw._links.html ? raw._links.html.href : null,
   };
@@ -394,6 +405,46 @@ async function filterIdsByExactUserActivity(ids, targetUser, dateFrom, dateTo) {
   return matchedIds;
 }
 
+/**
+ * Fetch project iterations hierarchy from Azure DevOps classification nodes API.
+ * Flattens the hierarchy into an array of path strings.
+ * @returns {Promise<string[]>}
+ */
+async function fetchIterations() {
+  const org = process.env.ADO_ORG;
+  const project = process.env.ADO_PROJECT;
+  const pat = process.env.ADO_PAT;
+  const authHeader = 'Basic ' + Buffer.from(`:${pat}`).toString('base64');
+
+  const iterations = [];
+
+  function traverseNode(node, currentPath) {
+    const path = currentPath ? `${currentPath}\\${node.name}` : node.name;
+    iterations.push(path);
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) {
+        traverseNode(child, path);
+      }
+    }
+  }
+
+  try {
+    const url = `https://dev.azure.com/${org}/${project}/_apis/wit/classificationnodes/iterations?$depth=5&api-version=7.1`;
+    const res = await fetch(url, {
+      headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      traverseNode(data, '');
+    }
+  } catch (err) {
+    console.warn('[ado-client] Failed to fetch iterations classification:', err.message);
+  }
+
+  return iterations.sort((a, b) => a.localeCompare(b));
+}
+
 module.exports = {
   fetchWorkItem,
   fetchMultipleWorkItems,
@@ -401,4 +452,5 @@ module.exports = {
   fetchWorkItemsWithFields,
   fetchTeamMembers,
   filterIdsByExactUserActivity,
+  fetchIterations,
 };

@@ -331,7 +331,7 @@ router.delete('/api/notes/:noteId', (req, res) => {
  */
 router.post('/api/team-workload', async (req, res) => {
   try {
-    const { dateFrom, dateTo, assignedTo } = req.body;
+    const { dateFrom, dateTo, assignedTo, iterationPath } = req.body;
 
     if (!dateFrom || !dateTo) {
       return res
@@ -343,6 +343,12 @@ router.post('/api/team-workload', async (req, res) => {
     const conditions = [
       `(([System.ChangedDate] >= '${dateFrom}' AND [System.ChangedDate] <= '${dateTo}') OR ([System.CreatedDate] >= '${dateFrom}' AND [System.CreatedDate] <= '${dateTo}'))`,
     ];
+
+    // Optional Iteration Path / Sprint filter
+    if (iterationPath && String(iterationPath).trim()) {
+      const cleanPath = String(iterationPath).trim().replace(/'/g, "''");
+      conditions.push(`[System.IterationPath] UNDER '${cleanPath}'`);
+    }
 
     // Support both single string and array of assignees
     const assignees = Array.isArray(assignedTo) ? assignedTo : (assignedTo && assignedTo.trim() ? [assignedTo.trim()] : []);
@@ -405,6 +411,8 @@ router.post('/api/team-workload', async (req, res) => {
             assignedTo: item.assignedTo,
             teamProject: item.teamProject,
             areaPath: item.areaPath,
+            iterationPath: item.iterationPath,
+            storyPoints: item.storyPoints,
             priority: item.priority,
             url: item.url,
           });
@@ -423,6 +431,8 @@ router.post('/api/team-workload', async (req, res) => {
           assignedTo: item.assignedTo,
           teamProject: item.teamProject,
           areaPath: item.areaPath,
+          iterationPath: item.iterationPath,
+          storyPoints: item.storyPoints,
           priority: item.priority,
           url: item.url,
         });
@@ -431,12 +441,16 @@ router.post('/api/team-workload', async (req, res) => {
 
     // Build response
     let totalTickets = 0;
+    let totalStoryPoints = 0;
     const members = Object.entries(groups)
       .map(([name, tickets]) => {
         totalTickets += tickets.length;
+        const memberPoints = tickets.reduce((sum, t) => sum + (typeof t.storyPoints === 'number' ? t.storyPoints : 0), 0);
+        totalStoryPoints += memberPoints;
         return {
           name,
           ticketCount: tickets.length,
+          storyPoints: Math.round(memberPoints * 10) / 10,
           tickets,
         };
       })
@@ -445,9 +459,11 @@ router.post('/api/team-workload', async (req, res) => {
     res.json({
       members,
       totalTickets,
+      totalStoryPoints: Math.round(totalStoryPoints * 10) / 10,
       totalMembers: members.length,
       dateFrom,
       dateTo,
+      iterationPath: iterationPath || null,
     });
   } catch (err) {
     console.error('[routes] POST /api/team-workload error:', err.message);
@@ -523,6 +539,23 @@ router.delete('/api/pinned-team-members/:name', (req, res) => {
   }
 });
 
+
+/**
+ * GET /api/iterations
+ * Return project iterations/sprints for workload filter.
+ */
+router.get('/api/iterations', async (_req, res) => {
+  try {
+    let iterations = await ado.fetchIterations();
+    if (!iterations || iterations.length === 0) {
+      iterations = db.getDistinctIterations();
+    }
+    res.json(iterations);
+  } catch (err) {
+    console.error('[routes] GET /api/iterations error:', err.message);
+    res.json(db.getDistinctIterations());
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SSE — Server-Sent Events

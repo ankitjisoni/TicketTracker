@@ -88,10 +88,13 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_personal_notes_updated_at ON personal_notes(updated_at);
   `);
 
-  // Migrate existing databases that predate the code_committed column
+  // Migrate existing databases that predate code_committed and story_points
   const ticketColumns = db.prepare('PRAGMA table_info(tickets)').all();
   if (!ticketColumns.some((col) => col.name === 'code_committed')) {
     db.exec('ALTER TABLE tickets ADD COLUMN code_committed INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!ticketColumns.some((col) => col.name === 'story_points')) {
+    db.exec('ALTER TABLE tickets ADD COLUMN story_points REAL DEFAULT NULL');
   }
 
   console.log('[db] Database initialised at', DB_PATH);
@@ -119,9 +122,9 @@ function getTicketById(id) {
 function addTicket(item) {
   const stmt = db.prepare(`
     INSERT INTO tickets (ado_id, title, state, assigned_to, work_item_type,
-                         priority, area_path, iteration_path, url, last_fetched_at)
+                         priority, area_path, iteration_path, story_points, url, last_fetched_at)
     VALUES (@adoId, @title, @state, @assignedTo, @workItemType,
-            @priority, @areaPath, @iterationPath, @url, datetime('now'))
+            @priority, @areaPath, @iterationPath, @storyPoints, @url, datetime('now'))
   `);
 
   const info = stmt.run({
@@ -133,6 +136,7 @@ function addTicket(item) {
     priority: item.priority,
     areaPath: item.areaPath,
     iterationPath: item.iterationPath,
+    storyPoints: item.storyPoints ?? null,
     url: item.url,
   });
 
@@ -164,6 +168,7 @@ function updateTicketFromAdo(ticketId, item) {
            priority        = @priority,
            area_path       = @areaPath,
            iteration_path  = @iterationPath,
+           story_points    = @storyPoints,
            url             = @url,
            last_fetched_at = datetime('now')
      WHERE id = @ticketId
@@ -176,6 +181,7 @@ function updateTicketFromAdo(ticketId, item) {
     priority: item.priority,
     areaPath: item.areaPath,
     iterationPath: item.iterationPath,
+    storyPoints: item.storyPoints ?? null,
     url: item.url,
   });
 
@@ -293,6 +299,18 @@ function getDistinctWorkItemTypes() {
     )
     .all()
     .map((row) => row.work_item_type);
+}
+
+/** Return distinct iteration_path values (non-null) from tracked tickets. */
+function getDistinctIterations() {
+  return db
+    .prepare(
+      `SELECT DISTINCT iteration_path FROM tickets
+       WHERE iteration_path IS NOT NULL AND iteration_path != ''
+       ORDER BY iteration_path ASC`
+    )
+    .all()
+    .map((row) => row.iteration_path);
 }
 
 // ---------------------------------------------------------------------------
@@ -426,6 +444,7 @@ module.exports = {
   addStatusChange,
   getDistinctAssignees,
   getDistinctWorkItemTypes,
+  getDistinctIterations,
   getPinnedTeamMembers,
   pinTeamMember,
   unpinTeamMember,

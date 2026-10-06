@@ -1406,18 +1406,24 @@ const UI = (() => {
 
     // Summary stats bar
     const summaryBar = createElement('div', 'workload-summary-bar');
+    const pointsFormatted = data.totalStoryPoints != null ? data.totalStoryPoints : 0;
     summaryBar.innerHTML = `
       <div class="workload-stat-card" style="animation-delay:0s">
         <div class="workload-stat-label">Total Tickets</div>
         <div class="workload-stat-value">${data.totalTickets}</div>
       </div>
-      <div class="workload-stat-card" style="animation-delay:0.06s">
+      <div class="workload-stat-card" style="animation-delay:0.04s">
+        <div class="workload-stat-label">Total Story Points</div>
+        <div class="workload-stat-value">${pointsFormatted}<span style="font-size:var(--font-size-sm);font-weight:600;margin-left:4px;color:var(--accent-primary)">pts</span></div>
+      </div>
+      <div class="workload-stat-card" style="animation-delay:0.08s">
         <div class="workload-stat-label">Team Members</div>
         <div class="workload-stat-value">${data.totalMembers || data.members.length}</div>
       </div>
       <div class="workload-stat-card" style="animation-delay:0.12s">
-        <div class="workload-stat-label">Date Range</div>
+        <div class="workload-stat-label">Scope</div>
         <div class="workload-stat-value" style="font-size:var(--font-size-md)">${escapeHtml(data.dateFrom || '')} → ${escapeHtml(data.dateTo || '')}</div>
+        ${data.iterationPath ? `<div class="workload-stat-sub" title="${escapeHtml(data.iterationPath)}">Sprint: ${escapeHtml(data.iterationPath.split('\\').pop())}</div>` : ''}
       </div>
     `;
     container.appendChild(summaryBar);
@@ -1468,16 +1474,24 @@ const UI = (() => {
 
       const barWidth = maxCount > 0 ? Math.round((member.ticketCount / maxCount) * 100) : 0;
 
-      // Build ticket rows HTML — now with Area and Currently Assigned To columns
+      // Build ticket rows HTML — now with Story Points, Area, and Iteration
       const ticketRowsHtml = tickets
         .map((t) => {
           const statusKey = getStatusClass(t.state);
           const url = t.url || '#';
+          const pointsBadge = t.storyPoints != null
+            ? `<span class="member-ticket-points" title="Story Points">${t.storyPoints} pts</span>`
+            : '';
+          const iterBadge = t.iterationPath
+            ? `<span class="member-ticket-iteration" title="${escapeHtml(t.iterationPath)}">${escapeHtml(t.iterationPath.split('\\').pop())}</span>`
+            : '';
           return `
             <div class="member-ticket-row">
               <a class="member-ticket-id" href="${escapeHtml(url)}" target="_blank" rel="noopener">#${t.id}</a>
               <span class="member-ticket-title">${escapeHtml(t.title || 'Untitled')}</span>
+              ${pointsBadge}
               <span class="member-ticket-project" title="${escapeHtml(t.areaPath || '—')}">${escapeHtml(t.areaPath || '—')}</span>
+              ${iterBadge}
               <span class="status-badge" data-status="${statusKey}">${escapeHtml(t.state || 'New')}</span>
               <span class="member-ticket-type">${escapeHtml(t.workItemType || '—')}</span>
               <span class="member-ticket-assigned" title="${escapeHtml(t.assignedTo || 'Unassigned')}">${escapeHtml(t.assignedTo || 'Unassigned')}</span>
@@ -1519,10 +1533,10 @@ const UI = (() => {
               <div class="member-bar-track">
                 <div class="member-bar-fill" style="width:${barWidth}%"></div>
               </div>
-              <span class="member-bar-label">${member.ticketCount} ticket${member.ticketCount !== 1 ? 's' : ''}</span>
+              <span class="member-bar-label">${member.ticketCount} ticket${member.ticketCount !== 1 ? 's' : ''}${member.storyPoints ? ` • ${member.storyPoints} pts` : ''}</span>
             </div>
           </div>
-          <span class="member-count-badge">${member.ticketCount}</span>
+          <span class="member-count-badge">${member.ticketCount}${member.storyPoints ? ` (${member.storyPoints}p)` : ''}</span>
           <svg class="member-expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
         </div>
         <div class="member-tickets">
@@ -1569,9 +1583,10 @@ const UI = (() => {
 
     const rows = [
       ['Team Workload Report'],
-      [`Date Range: ${dateFrom} to ${dateTo}`],
+      [`Date Range: ${dateFrom} to ${dateTo}${data.iterationPath ? ` | Iteration: ${data.iterationPath}` : ''}`],
+      [`Total Tickets: ${data.totalTickets || 0} | Total Story Points: ${data.totalStoryPoints || 0}`],
       [''],
-      ['Assigned To', 'Ticket ID', 'Title', 'Area Path', 'Status', 'Work Item Type', 'Currently Assigned To'],
+      ['Assigned To', 'Ticket ID', 'Title', 'Story Points', 'Area Path', 'Iteration Path', 'Status', 'Work Item Type', 'Currently Assigned To'],
     ];
 
     data.members.forEach((member) => {
@@ -1580,7 +1595,9 @@ const UI = (() => {
           member.name || '',
           String(t.id || ''),
           t.title || '',
+          t.storyPoints != null ? String(t.storyPoints) : '',
           t.areaPath || '',
+          t.iterationPath || '',
           t.state || '',
           t.workItemType || '',
           t.assignedTo || 'Unassigned',
@@ -1622,6 +1639,25 @@ const UI = (() => {
     showToast('Workload report exported to CSV (opens cleanly in Excel)!', 'success');
   }
 
+  /**
+   * Populate the Iteration / Sprint select dropdown in workload filters.
+   * @param {string[]} iterations
+   */
+  function populateIterationSelect(iterations) {
+    const select = document.getElementById('wl-iteration-select');
+    if (!select) return;
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">All Sprints / Iterations</option>';
+    if (!Array.isArray(iterations) || iterations.length === 0) return;
+    iterations.forEach((path) => {
+      const opt = document.createElement('option');
+      opt.value = path;
+      opt.textContent = path;
+      if (path === currentVal) opt.selected = true;
+      select.appendChild(opt);
+    });
+  }
+
   /* ----------------------------------------------------------
      Public API
      ---------------------------------------------------------- */
@@ -1661,6 +1697,7 @@ const UI = (() => {
     updatePinnedMembers,
     getSelectedAssignees,
     clearSelectedAssignees,
+    populateIterationSelect,
     renderWorkloadResults,
     renderWorkloadLoading,
     renderWorkloadEmpty,
