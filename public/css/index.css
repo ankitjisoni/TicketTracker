@@ -4,6 +4,8 @@
 
 /* ----- Custom Properties / Design Tokens ----- */
 :root {
+  color-scheme: dark;
+
   /* Backgrounds */
   --bg-primary: #0a0e1a;
   --bg-secondary: #111827;
@@ -115,6 +117,22 @@ button {
 input, textarea, select {
   font-family: var(--font-family);
   outline: none;
+  color-scheme: dark;
+}
+
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #111827;
+  color: #f1f5f9;
+  padding: 6px 10px;
+}
+
+select option:disabled {
+  color: #64748b;
+  background-color: #0b0f19;
 }
 
 ul, ol {
@@ -3341,10 +3359,45 @@ select.filter-input option {
   font-size: var(--font-size-xs);
 }
 
+.filter-input {
+  background: rgba(17, 24, 39, 0.75);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  color-scheme: dark;
+  transition: all var(--transition-fast);
+}
+
+.filter-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
+  outline: none;
+}
+
 .kanban-toolbar-filters select.filter-select {
-  padding: 6px 12px;
+  padding: 6px 28px 6px 12px;
   font-size: var(--font-size-xs);
   max-width: 170px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 13px;
+  color-scheme: dark;
+}
+
+.kanban-toolbar-filters select.filter-select:hover {
+  border-color: var(--border-glass-hover);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.kanban-toolbar-filters select.filter-select option {
+  background-color: #111827 !important;
+  color: #f1f5f9 !important;
+  padding: 8px 12px;
+  font-size: 13px;
 }
 
 .kanban-toolbar-filters .btn-ghost,
@@ -3683,20 +3736,46 @@ select.filter-input option {
 }
 
 .kanban-card-move-select {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(17, 24, 39, 0.9);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  font-size: 10px;
-  padding: 2px 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 20px 3px 8px;
   cursor: pointer;
+  color-scheme: dark;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 11px;
   transition: all var(--transition-fast);
 }
 
 .kanban-card-move-select:hover {
   color: var(--text-primary);
-  border-color: var(--border-glass-hover);
-  background: var(--bg-glass-hover);
+  border-color: var(--accent-primary);
+  background-color: rgba(6, 182, 212, 0.12);
+}
+
+.kanban-card-move-select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.25);
+  outline: none;
+}
+
+.kanban-card-move-select option {
+  background-color: #111827 !important;
+  color: #f1f5f9 !important;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.kanban-card-move-select option:disabled {
+  color: #64748b !important;
+  background-color: #0b0f19 !important;
 }
 
 .kanban-empty-col {

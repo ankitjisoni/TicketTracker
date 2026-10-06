@@ -2303,10 +2303,10 @@ const UI = (() => {
                 <span class="kanban-card-time">${formatTimeAgo(t.last_fetched_at || t.lastUpdated)}</span>
                 <select class="kanban-card-move-select" data-action="quick-move" title="Move status">
                   <option value="" disabled selected>Move…</option>
-                  <option value="New" ${t.state === 'New' ? 'disabled' : ''}>New</option>
-                  <option value="Active" ${t.state === 'Active' ? 'disabled' : ''}>Active</option>
-                  <option value="Resolved" ${t.state === 'Resolved' ? 'disabled' : ''}>Resolved</option>
-                  <option value="Closed" ${t.state === 'Closed' ? 'disabled' : ''}>Closed</option>
+                  <option value="New" ${t.state === 'New' ? 'disabled' : ''}>${t.state === 'New' ? '✓ New (Current)' : '→ Move to New'}</option>
+                  <option value="Active" ${t.state === 'Active' ? 'disabled' : ''}>${t.state === 'Active' ? '✓ Active (Current)' : '→ Move to Active'}</option>
+                  <option value="Resolved" ${['Resolved', 'QA', 'QA Passed'].includes(t.state) ? 'disabled' : ''}>${['Resolved', 'QA', 'QA Passed'].includes(t.state) ? '✓ Resolved/QA (Current)' : '→ Move to Resolved'}</option>
+                  <option value="Closed" ${['Closed', 'Done'].includes(t.state) ? 'disabled' : ''}>${['Closed', 'Done'].includes(t.state) ? '✓ Closed (Current)' : '→ Move to Closed'}</option>
                 </select>
               </div>
             </div>
