@@ -203,6 +203,21 @@ function setCodeCommitted(ticketId, committed) {
   return getTicketById(ticketId);
 }
 
+/**
+ * Update the state of a ticket directly.
+ * @param {number} ticketId — internal PK
+ * @param {string} newState — new state string
+ * @returns {object|undefined} the updated ticket row, or undefined if not found
+ */
+function updateTicketState(ticketId, newState) {
+  const info = db
+    .prepare("UPDATE tickets SET state = ?, last_fetched_at = datetime('now') WHERE id = ?")
+    .run(newState, ticketId);
+
+  if (info.changes === 0) return undefined;
+  return getTicketById(ticketId);
+}
+
 // ---------------------------------------------------------------------------
 // Commit Notes
 // ---------------------------------------------------------------------------
@@ -436,6 +451,7 @@ module.exports = {
   deleteTicket,
   updateTicketFromAdo,
   setCodeCommitted,
+  updateTicketState,
   getCommitNotes,
   addCommitNote,
   updateCommitNote,

@@ -18,6 +18,7 @@ const App = (() => {
   let notifications = [];
   let personalNotes = [];
   let notesLoaded = false;
+  let boardFilters = { search: '', assignee: '', type: '', commit: 'all' };
   const MAX_NOTIFICATIONS = 30;
 
   /* ----------------------------------------------------------
@@ -135,6 +136,13 @@ const App = (() => {
 
     getIterations() {
       return this._fetch('/api/iterations');
+    },
+
+    updateTicketState(id, state) {
+      return this._fetch(`/api/tickets/${id}/state`, {
+        method: 'PATCH',
+        body: JSON.stringify({ state }),
+      });
     },
   };
 
@@ -419,6 +427,33 @@ const App = (() => {
     } catch { /* handled */ }
   }
 
+  async function updateTicketState(id, newState) {
+    const ticket = tickets.find((t) => t.id === id);
+    if (!ticket) return;
+    const oldState = ticket.state;
+    if (oldState === newState) return;
+
+    // Optimistic state update
+    ticket.state = newState;
+    renderFilteredList();
+
+    try {
+      const res = await api.updateTicketState(id, newState);
+      if (res) {
+        ticket.state = res.state || newState;
+        ticket.last_fetched_at = res.last_fetched_at || new Date().toISOString();
+        renderFilteredList();
+        if (selectedTicketId === id) {
+          loadTicketDetail(id);
+        }
+        UI.showToast(`#${ticket.ado_id || ticket.adoId} moved to ${newState}`, 'success');
+      }
+    } catch {
+      ticket.state = oldState;
+      renderFilteredList();
+    }
+  }
+
   function deleteSelectedTicket() {
     if (!selectedTicketId) return;
     const ticket = tickets.find((t) => t.id === selectedTicketId);
@@ -515,6 +550,8 @@ const App = (() => {
 
   function renderFilteredList() {
     UI.renderTicketList(getFilteredTickets(), selectedTicketId);
+    UI.populateBoardFilters(tickets);
+    UI.renderKanbanBoard(tickets, boardFilters);
   }
 
   function filterTickets(query) {
@@ -777,6 +814,15 @@ const App = (() => {
   function switchToTab(tabName) {
     UI.switchTab(tabName);
 
+    // Sync view mode buttons
+    if (tabName === 'tickets') {
+      document.querySelectorAll('.view-mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === 'list'));
+    } else if (tabName === 'board') {
+      document.querySelectorAll('.view-mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === 'board'));
+      UI.populateBoardFilters(tickets);
+      UI.renderKanbanBoard(tickets, boardFilters);
+    }
+
     // Lazy-load workload filter data when switching to that tab
     if (tabName === 'workload') {
       loadWorkloadFilters();
@@ -900,11 +946,79 @@ const App = (() => {
       clearNoteBtn.addEventListener('click', clearPersonalNoteForm);
     }
 
-    /* Keyboard shortcut: Escape closes modal / notification panel */
+    /* View mode toggles (List vs Board) */
+    document.querySelectorAll('.view-mode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        switchToTab(btn.dataset.view === 'board' ? 'board' : 'tickets');
+      });
+    });
+
+    /* Kanban Board Toolbar filters */
+    const boardSearch = document.getElementById('board-search');
+    if (boardSearch) {
+      let debounce;
+      boardSearch.addEventListener('input', (e) => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          boardFilters.search = e.target.value.trim();
+          UI.renderKanbanBoard(tickets, boardFilters);
+        }, 150);
+      });
+    }
+
+    const boardAssignee = document.getElementById('board-filter-assignee');
+    if (boardAssignee) {
+      boardAssignee.addEventListener('change', (e) => {
+        boardFilters.assignee = e.target.value;
+        UI.renderKanbanBoard(tickets, boardFilters);
+      });
+    }
+
+    const boardType = document.getElementById('board-filter-type');
+    if (boardType) {
+      boardType.addEventListener('change', (e) => {
+        boardFilters.type = e.target.value;
+        UI.renderKanbanBoard(tickets, boardFilters);
+      });
+    }
+
+    const boardCommit = document.getElementById('board-filter-commit');
+    if (boardCommit) {
+      boardCommit.addEventListener('change', (e) => {
+        boardFilters.commit = e.target.value;
+        UI.renderKanbanBoard(tickets, boardFilters);
+      });
+    }
+
+    const boardRefreshBtn = document.getElementById('btn-board-refresh');
+    if (boardRefreshBtn) {
+      boardRefreshBtn.addEventListener('click', async () => {
+        UI.showToast('Refreshing all tickets…', 'info');
+        await loadTickets();
+      });
+    }
+
+    const boardAddBtn = document.getElementById('btn-board-add');
+    if (boardAddBtn) {
+      boardAddBtn.addEventListener('click', () => {
+        UI.showAddTicketModal();
+      });
+    }
+
+    /* Kanban Drawer close handlers */
+    document.getElementById('drawer-close-btn')?.addEventListener('click', () => {
+      UI.closeKanbanDrawer();
+    });
+    document.getElementById('kanban-drawer-backdrop')?.addEventListener('click', () => {
+      UI.closeKanbanDrawer();
+    });
+
+    /* Keyboard shortcut: Escape closes modal / notification panel / kanban drawer */
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         UI.hideModal();
         closeNotificationPanel();
+        UI.closeKanbanDrawer();
       }
     });
   }
@@ -940,6 +1054,7 @@ const App = (() => {
     loadPersonalNotes,
     requestNotificationPermission,
     openDailyStandup,
+    updateTicketState,
     switchToTab,
     init,
   };

@@ -445,6 +445,41 @@ async function fetchIterations() {
   return iterations.sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Update work item state in Azure DevOps using JSON Patch.
+ * @param {number|string} adoId
+ * @param {string} newState
+ * @returns {Promise<object>}
+ */
+async function updateWorkItemState(adoId, newState) {
+  const { baseUrl, authHeader } = getConfig();
+  const url = `${baseUrl}/wit/workitems/${adoId}?api-version=7.1`;
+  const patchDoc = [
+    {
+      op: 'add',
+      path: '/fields/System.State',
+      value: newState,
+    },
+  ];
+
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      Authorization: authHeader,
+      'Content-Type': 'application/json-patch+json',
+    },
+    body: JSON.stringify(patchDoc),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`ADO API error (${res.status}): ${text}`);
+  }
+
+  const raw = await res.json();
+  return parseWorkItem(raw);
+}
+
 module.exports = {
   fetchWorkItem,
   fetchMultipleWorkItems,
@@ -453,4 +488,5 @@ module.exports = {
   fetchTeamMembers,
   filterIdsByExactUserActivity,
   fetchIterations,
+  updateWorkItemState,
 };

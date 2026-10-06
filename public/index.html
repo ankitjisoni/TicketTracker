@@ -83,6 +83,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/></svg>
       Tickets
     </button>
+    <button class="tab-btn" data-tab="board" id="tab-btn-board">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 3v18"/><path d="M16 3v18"/></svg>
+      Kanban Board
+    </button>
     <button class="tab-btn" data-tab="workload" id="tab-btn-workload">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       Team Workload
@@ -95,14 +99,26 @@
   </nav>
 
   <!-- ======================================================
-       TAB PANEL: TICKETS (existing view)
+       TAB PANEL: TICKETS (Split List & Detail View)
        ====================================================== -->
   <main class="app-main tab-panel active" id="panel-tickets">
 
     <!-- LEFT PANEL — Ticket List -->
     <aside class="left-panel">
       <div class="panel-header">
-        <h2>Tracked Tickets <span class="ticket-count" id="ticket-count">0</span></h2>
+        <div class="panel-title-row">
+          <h2>Tracked Tickets <span class="ticket-count" id="ticket-count">0</span></h2>
+          <div class="view-mode-toggle" id="tickets-view-toggle">
+            <button class="view-mode-btn active" data-view="list" id="btn-toggle-list" title="Split List View">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              <span>List</span>
+            </button>
+            <button class="view-mode-btn" data-view="board" id="btn-toggle-board" title="Switch to Kanban Board View">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 3v18"/><path d="M16 3v18"/></svg>
+              <span>Board</span>
+            </button>
+          </div>
+        </div>
 
         <div class="search-wrapper">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -144,6 +160,157 @@
       </div>
     </section>
 
+  </main>
+
+  <!-- ======================================================
+       TAB PANEL: KANBAN BOARD
+       ====================================================== -->
+  <main class="app-main tab-panel" id="panel-board">
+    <div class="kanban-wrapper">
+
+      <!-- Kanban Control Toolbar -->
+      <div class="kanban-toolbar">
+        <div class="kanban-toolbar-left">
+          <div class="kanban-title-group">
+            <h2 class="kanban-title">Kanban Board</h2>
+            <span class="kanban-summary-badge" id="board-summary-badge">0 tickets • 0 pts</span>
+          </div>
+
+          <div class="view-mode-toggle" id="board-view-toggle">
+            <button class="view-mode-btn" data-view="list" id="btn-board-toggle-list" title="Switch to Split List View">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              <span>List</span>
+            </button>
+            <button class="view-mode-btn active" data-view="board" id="btn-board-toggle-board" title="Kanban Board View">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 3v18"/><path d="M16 3v18"/></svg>
+              <span>Board</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="kanban-toolbar-filters">
+          <div class="kanban-search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="board-search" class="filter-input" placeholder="Search cards by ID, title, assignee…" />
+          </div>
+
+          <select id="board-filter-assignee" class="filter-input filter-select">
+            <option value="">All Assignees</option>
+          </select>
+
+          <select id="board-filter-type" class="filter-input filter-select">
+            <option value="">All Types</option>
+          </select>
+
+          <select id="board-filter-commit" class="filter-input filter-select">
+            <option value="all">All Status</option>
+            <option value="committed">Completed</option>
+            <option value="not-committed">Not Completed</option>
+          </select>
+
+          <button class="btn-ghost" id="btn-board-refresh" title="Refresh all tickets from Azure DevOps">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+            <span>Refresh</span>
+          </button>
+
+          <button class="btn-primary" id="btn-board-add">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            <span>Add Ticket</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Kanban Columns Container -->
+      <div class="kanban-columns-container" id="kanban-columns-container">
+        <!-- Column 1: New / Backlog -->
+        <div class="kanban-column" data-stage="new" id="kanban-col-new">
+          <div class="kanban-col-header">
+            <div class="kanban-col-title-wrap">
+              <span class="kanban-status-dot status-new"></span>
+              <h3 class="kanban-col-title">New / Backlog</h3>
+            </div>
+            <div class="kanban-col-badges">
+              <span class="kanban-col-count" id="count-stage-new">0</span>
+              <span class="kanban-col-points" id="points-stage-new">0 pts</span>
+            </div>
+          </div>
+          <div class="kanban-card-list" id="cards-stage-new" data-stage="new"></div>
+        </div>
+
+        <!-- Column 2: Active / In Progress -->
+        <div class="kanban-column" data-stage="active" id="kanban-col-active">
+          <div class="kanban-col-header">
+            <div class="kanban-col-title-wrap">
+              <span class="kanban-status-dot status-active"></span>
+              <h3 class="kanban-col-title">Active / In Progress</h3>
+            </div>
+            <div class="kanban-col-badges">
+              <span class="kanban-col-count" id="count-stage-active">0</span>
+              <span class="kanban-col-points" id="points-stage-active">0 pts</span>
+            </div>
+          </div>
+          <div class="kanban-card-list" id="cards-stage-active" data-stage="active"></div>
+        </div>
+
+        <!-- Column 3: Resolved / QA -->
+        <div class="kanban-column" data-stage="resolved" id="kanban-col-resolved">
+          <div class="kanban-col-header">
+            <div class="kanban-col-title-wrap">
+              <span class="kanban-status-dot status-resolved"></span>
+              <h3 class="kanban-col-title">Resolved / QA</h3>
+            </div>
+            <div class="kanban-col-badges">
+              <span class="kanban-col-count" id="count-stage-resolved">0</span>
+              <span class="kanban-col-points" id="points-stage-resolved">0 pts</span>
+            </div>
+          </div>
+          <div class="kanban-card-list" id="cards-stage-resolved" data-stage="resolved"></div>
+        </div>
+
+        <!-- Column 4: Closed / Done -->
+        <div class="kanban-column" data-stage="closed" id="kanban-col-closed">
+          <div class="kanban-col-header">
+            <div class="kanban-col-title-wrap">
+              <span class="kanban-status-dot status-closed"></span>
+              <h3 class="kanban-col-title">Closed / Done</h3>
+            </div>
+            <div class="kanban-col-badges">
+              <span class="kanban-col-count" id="count-stage-closed">0</span>
+              <span class="kanban-col-points" id="points-stage-closed">0 pts</span>
+            </div>
+          </div>
+          <div class="kanban-card-list" id="cards-stage-closed" data-stage="closed"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Slide-over Drawer for Kanban Ticket Detail -->
+    <div class="kanban-drawer-backdrop" id="kanban-drawer-backdrop"></div>
+    <aside class="kanban-drawer" id="kanban-drawer">
+      <div class="kanban-drawer-header">
+        <div class="kanban-drawer-title-group">
+          <span class="kanban-drawer-id" id="drawer-ado-id">#—</span>
+          <span class="status-badge" id="drawer-status-badge" data-status="new">New</span>
+        </div>
+        <div class="kanban-drawer-actions">
+          <button class="btn-ghost" id="drawer-btn-view-list" title="Open in Split List View">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            <span>Split View</span>
+          </button>
+          <a class="btn-ghost" id="drawer-ado-link" href="#" target="_blank" rel="noopener" title="Open in Azure DevOps">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+            <span>DevOps</span>
+          </a>
+          <button class="drawer-close-btn" id="drawer-close-btn" title="Close Drawer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="kanban-drawer-body" id="kanban-drawer-body">
+        <!-- Rendered dynamically -->
+      </div>
+    </aside>
   </main>
 
   <!-- ======================================================

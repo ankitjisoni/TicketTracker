@@ -171,6 +171,70 @@ router.patch('/api/tickets/:id/code-committed', (req, res) => {
   }
 });
 
+/**
+ * PATCH /api/tickets/:id/state
+ * Transition ticket state (supports Kanban board moves & manual state updates).
+ * Body: { state: string }
+ */
+router.patch('/api/tickets/:id/state', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid ticket id' });
+    }
+
+    const { state } = req.body;
+    if (!state || typeof state !== 'string' || !state.trim()) {
+      return res.status(400).json({ error: '"state" is required and must be a non-empty string' });
+    }
+
+    const targetState = state.trim();
+    const currentTicket = db.getTicketById(id);
+    if (!currentTicket) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    const oldState = currentTicket.state;
+    if (oldState === targetState) {
+      return res.json(currentTicket);
+    }
+
+    // Attempt to sync state to Azure DevOps (soft fail if read-only PAT or restricted)
+    let syncedWithAdo = false;
+    try {
+      await ado.updateWorkItemState(currentTicket.ado_id, targetState);
+      syncedWithAdo = true;
+    } catch (adoErr) {
+      console.warn(`[routes] State sync to ADO skipped/failed (#${currentTicket.ado_id}): ${adoErr.message}`);
+    }
+
+    // Record transition history
+    db.addStatusChange(id, oldState, targetState);
+
+    // Update state in local database
+    const updated = db.updateTicketState(id, targetState);
+
+    // Broadcast change via SSE to all clients
+    poller.broadcast('status_change', {
+      type: 'status_change',
+      ticketId: id,
+      adoId: currentTicket.ado_id,
+      title: currentTicket.title,
+      oldState,
+      newState: targetState,
+      changedAt: new Date().toISOString(),
+    });
+
+    res.json({
+      ...updated,
+      syncedWithAdo,
+    });
+  } catch (err) {
+    console.error('[routes] PATCH /api/tickets/:id/state error:', err.message);
+    res.status(500).json({ error: 'Failed to update ticket state' });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // STATUS HISTORY
 // ═══════════════════════════════════════════════════════════════════════════

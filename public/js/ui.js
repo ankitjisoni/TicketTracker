@@ -1659,6 +1659,505 @@ const UI = (() => {
   }
 
   /* ----------------------------------------------------------
+     Kanban Board Implementation
+     ---------------------------------------------------------- */
+  const KANBAN_STAGES = [
+    { key: 'new', label: 'New / Backlog', defaultState: 'New' },
+    { key: 'active', label: 'Active / In Progress', defaultState: 'Active' },
+    { key: 'resolved', label: 'Resolved / QA', defaultState: 'Resolved' },
+    { key: 'closed', label: 'Closed / Done', defaultState: 'Closed' },
+  ];
+
+  function getKanbanStage(state) {
+    if (!state) return 'new';
+    const s = String(state).toLowerCase().replace(/[\s\-_]/g, '');
+    if (['new', 'proposed', 'todo', 'backlog', 'open'].includes(s)) return 'new';
+    if (['active', 'inprogress', 'development', 'committed', 'doing', 'started'].includes(s)) return 'active';
+    if (['resolved', 'readyforqa', 'inqa', 'qa', 'review', 'testing', 'codecomplete'].includes(s)) return 'resolved';
+    if (['closed', 'done', 'completed', 'removed', 'cancelled'].includes(s)) return 'closed';
+    return 'active';
+  }
+
+  let _kanbanFilters = { search: '', assignee: '', type: '', commit: 'all' };
+
+  function renderKanbanBoard(tickets, filters = {}) {
+    _kanbanFilters = { ..._kanbanFilters, ...filters };
+    let filtered = Array.isArray(tickets) ? [...tickets] : [];
+
+    // Filter by search query
+    if (_kanbanFilters.search) {
+      const q = _kanbanFilters.search.toLowerCase();
+      filtered = filtered.filter((t) => {
+        const id = String(t.ado_id || t.adoId || '').toLowerCase();
+        const title = (t.title || '').toLowerCase();
+        const assignee = (t.assigned_to || t.assignedTo || '').toLowerCase();
+        return id.includes(q) || title.includes(q) || assignee.includes(q);
+      });
+    }
+
+    // Filter by assignee
+    if (_kanbanFilters.assignee) {
+      filtered = filtered.filter((t) => (t.assigned_to || t.assignedTo) === _kanbanFilters.assignee);
+    }
+
+    // Filter by work item type
+    if (_kanbanFilters.type) {
+      filtered = filtered.filter((t) => (t.work_item_type || t.workItemType) === _kanbanFilters.type);
+    }
+
+    // Filter by commit status
+    if (_kanbanFilters.commit && _kanbanFilters.commit !== 'all') {
+      filtered = filtered.filter((t) =>
+        _kanbanFilters.commit === 'committed' ? !!t.code_committed : !t.code_committed
+      );
+    }
+
+    // Overall summary badge
+    const totalCount = filtered.length;
+    const totalPoints = filtered.reduce(
+      (sum, t) => sum + (typeof t.story_points === 'number' ? t.story_points : (typeof t.storyPoints === 'number' ? t.storyPoints : 0)),
+      0
+    );
+    const summaryBadge = document.getElementById('board-summary-badge');
+    if (summaryBadge) {
+      const ptsFormatted = Math.round(totalPoints * 10) / 10;
+      summaryBadge.textContent = `${totalCount} ticket${totalCount !== 1 ? 's' : ''} • ${ptsFormatted} pts`;
+    }
+
+    // Group tickets by stage
+    const groups = { new: [], active: [], resolved: [], closed: [] };
+    filtered.forEach((t) => {
+      const stage = getKanbanStage(t.state || t.status);
+      if (groups[stage]) {
+        groups[stage].push(t);
+      } else {
+        groups.active.push(t);
+      }
+    });
+
+    // Render each column
+    KANBAN_STAGES.forEach((stageObj) => {
+      const listEl = document.getElementById(`cards-stage-${stageObj.key}`);
+      const countEl = document.getElementById(`count-stage-${stageObj.key}`);
+      const pointsEl = document.getElementById(`points-stage-${stageObj.key}`);
+      const colEl = document.getElementById(`kanban-col-${stageObj.key}`);
+      if (!listEl) return;
+
+      const items = groups[stageObj.key] || [];
+      const stagePoints = items.reduce(
+        (sum, t) => sum + (typeof t.story_points === 'number' ? t.story_points : (typeof t.storyPoints === 'number' ? t.storyPoints : 0)),
+        0
+      );
+
+      if (countEl) countEl.textContent = items.length;
+      if (pointsEl) pointsEl.textContent = `${Math.round(stagePoints * 10) / 10} pts`;
+
+      listEl.innerHTML = '';
+
+      if (items.length === 0) {
+        listEl.innerHTML = `
+          <div class="kanban-empty-col">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/>
+            </svg>
+            <span>No tickets in this stage</span>
+          </div>
+        `;
+      } else {
+        items.forEach((t) => {
+          const isCommitted = !!t.code_committed;
+          const points = t.story_points ?? t.storyPoints ?? null;
+          const pointsBadge = points != null ? `<span class="kanban-tag kanban-tag-points">${points} pts</span>` : '';
+          const typeStr = t.work_item_type || t.workItemType || 'Work Item';
+          const priority = t.priority;
+          const priorityBadge = priority ? `<span class="kanban-tag kanban-tag-priority p${priority}">P${priority}</span>` : '';
+          const assignee = t.assigned_to || t.assignedTo || 'Unassigned';
+          const initial = assignee.charAt(0) || 'U';
+          const area = t.area_path || t.areaPath || '';
+          const iter = t.iteration_path || t.iterationPath || '';
+          const subPath = iter ? iter.split('\\').pop() : (area ? area.split('\\').pop() : '');
+
+          const card = createElement('div', `kanban-card${isCommitted ? ' committed' : ''}`);
+          card.draggable = true;
+          card.dataset.id = t.id;
+          card.dataset.adoId = t.ado_id || t.adoId;
+
+          card.innerHTML = `
+            <div class="kanban-card-top">
+              <div class="kanban-card-top-left">
+                <a class="kanban-card-id" href="${escapeHtml(t.url || '#')}" target="_blank" rel="noopener">#${escapeHtml(String(t.ado_id || t.adoId || ''))}</a>
+                ${pointsBadge}
+              </div>
+              <div class="kanban-card-top-right">
+                <button class="committed-toggle-btn${isCommitted ? ' active' : ''}" data-action="toggle-committed" title="${isCommitted ? 'Completed — click to unmark' : 'Mark as Completed'}">
+                  ${icons.commit}
+                </button>
+              </div>
+            </div>
+            <div class="kanban-card-tags">
+              <span class="kanban-tag kanban-tag-type" data-type="${escapeAttr(typeStr)}">${escapeHtml(typeStr)}</span>
+              ${priorityBadge}
+              ${subPath ? `<span class="kanban-tag" style="background:rgba(255,255,255,0.04);color:var(--text-muted)" title="${escapeAttr(iter || area)}">${escapeHtml(subPath)}</span>` : ''}
+            </div>
+            <div class="kanban-card-title" title="${escapeAttr(t.title || 'Untitled')}">${escapeHtml(t.title || 'Untitled')}</div>
+            <div class="kanban-card-footer">
+              <div class="kanban-card-assignee" title="${escapeAttr(assignee)}">
+                <div class="kanban-avatar">${escapeHtml(initial)}</div>
+                <span>${escapeHtml(assignee)}</span>
+              </div>
+              <div class="kanban-card-footer-right">
+                <span class="kanban-card-time">${formatTimeAgo(t.last_fetched_at || t.lastUpdated)}</span>
+                <select class="kanban-card-move-select" data-action="quick-move" title="Move status">
+                  <option value="" disabled selected>Move…</option>
+                  <option value="New" ${t.state === 'New' ? 'disabled' : ''}>New</option>
+                  <option value="Active" ${t.state === 'Active' ? 'disabled' : ''}>Active</option>
+                  <option value="Resolved" ${t.state === 'Resolved' ? 'disabled' : ''}>Resolved</option>
+                  <option value="Closed" ${t.state === 'Closed' ? 'disabled' : ''}>Closed</option>
+                </select>
+              </div>
+            </div>
+          `;
+
+          // Card drag events
+          card.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', String(t.id));
+            e.dataTransfer.effectAllowed = 'move';
+            card.classList.add('dragging');
+          });
+
+          card.addEventListener('dragend', () => {
+            card.classList.remove('dragging');
+            document.querySelectorAll('.kanban-column').forEach((col) => col.classList.remove('drag-over'));
+          });
+
+          // Card click -> open detail drawer
+          card.addEventListener('click', (e) => {
+            if (e.target.closest('button') || e.target.closest('select') || e.target.closest('a')) return;
+            openKanbanDrawer(t);
+          });
+
+          // Toggle committed
+          card.querySelector('[data-action="toggle-committed"]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (typeof App !== 'undefined' && App.toggleCodeCommitted) App.toggleCodeCommitted(t.id);
+          });
+
+          // Quick move select
+          const moveSelect = card.querySelector('[data-action="quick-move"]');
+          moveSelect.addEventListener('click', (e) => e.stopPropagation());
+          moveSelect.addEventListener('change', (e) => {
+            e.stopPropagation();
+            const targetState = e.target.value;
+            if (targetState && typeof App !== 'undefined' && App.updateTicketState) {
+              App.updateTicketState(t.id, targetState);
+            }
+          });
+
+          listEl.appendChild(card);
+        });
+      }
+
+      // Column drop listeners
+      if (colEl && !colEl.dataset.dropBound) {
+        colEl.dataset.dropBound = 'true';
+        colEl.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          colEl.classList.add('drag-over');
+        });
+
+        colEl.addEventListener('dragleave', (e) => {
+          if (!colEl.contains(e.relatedTarget)) {
+            colEl.classList.remove('drag-over');
+          }
+        });
+
+        colEl.addEventListener('drop', (e) => {
+          e.preventDefault();
+          colEl.classList.remove('drag-over');
+          const ticketIdStr = e.dataTransfer.getData('text/plain');
+          const ticketId = Number(ticketIdStr);
+          if (ticketId && typeof App !== 'undefined' && App.updateTicketState) {
+            App.updateTicketState(ticketId, stageObj.defaultState);
+          }
+        });
+      }
+    });
+  }
+
+  function openKanbanDrawer(ticket) {
+    if (!ticket) return;
+
+    const drawer = document.getElementById('kanban-drawer');
+    const backdrop = document.getElementById('kanban-drawer-backdrop');
+    const idEl = document.getElementById('drawer-ado-id');
+    const statusBadge = document.getElementById('drawer-status-badge');
+    const adoLink = document.getElementById('drawer-ado-link');
+    const body = document.getElementById('kanban-drawer-body');
+
+    if (!drawer || !body) return;
+
+    if (idEl) idEl.textContent = `#${ticket.ado_id || ticket.adoId || ''}`;
+    if (statusBadge) {
+      statusBadge.dataset.status = getStatusClass(ticket.state || ticket.status);
+      statusBadge.textContent = ticket.state || ticket.status || 'New';
+    }
+    if (adoLink) {
+      adoLink.href = ticket.url || '#';
+    }
+
+    const isCommitted = !!ticket.code_committed;
+    const points = ticket.story_points ?? ticket.storyPoints ?? null;
+
+    body.innerHTML = `
+      <h2 style="font-size:var(--font-size-lg);font-weight:700;color:var(--text-primary);line-height:1.4">${escapeHtml(ticket.title || 'Untitled')}</h2>
+      
+      <div class="metadata-grid">
+        <div class="metadata-item">
+          <div class="metadata-label">Type</div>
+          <div class="metadata-value">${escapeHtml(ticket.work_item_type || ticket.workItemType || '—')}</div>
+        </div>
+        <div class="metadata-item">
+          <div class="metadata-label">Assigned To</div>
+          <div class="metadata-value">${escapeHtml(ticket.assigned_to || ticket.assignedTo || 'Unassigned')}</div>
+        </div>
+        <div class="metadata-item">
+          <div class="metadata-label">Story Points</div>
+          <div class="metadata-value" style="color:var(--accent-primary);font-weight:700">${points != null ? `${points} pts` : '—'}</div>
+        </div>
+        <div class="metadata-item">
+          <div class="metadata-label">Priority</div>
+          <div class="metadata-value">${escapeHtml(String(ticket.priority || '—'))}</div>
+        </div>
+        <div class="metadata-item">
+          <div class="metadata-label">Iteration</div>
+          <div class="metadata-value" title="${escapeAttr(ticket.iteration_path || ticket.iterationPath || '')}">${escapeHtml((ticket.iteration_path || ticket.iterationPath || '—').split('\\').pop())}</div>
+        </div>
+        <div class="metadata-item">
+          <div class="metadata-label">Area</div>
+          <div class="metadata-value" title="${escapeAttr(ticket.area_path || ticket.areaPath || '')}">${escapeHtml((ticket.area_path || ticket.areaPath || '—').split('\\').pop())}</div>
+        </div>
+      </div>
+
+      <div class="detail-actions" style="margin-top:0">
+        <button class="btn-ghost" id="drawer-btn-refresh">${icons.refresh} Refresh</button>
+        <button class="${isCommitted ? 'btn-committed active' : 'btn-committed'}" id="drawer-btn-toggle-committed">${icons.commit} ${isCommitted ? 'Completed' : 'Mark as Completed'}</button>
+        <button class="btn-danger" id="drawer-btn-delete">${icons.trash} Remove</button>
+      </div>
+
+      <div style="margin-top:10px">
+        <h3 class="section-title">${icons.history} Status History</h3>
+        <div id="drawer-status-history"><div class="spinner-wrapper"><div class="spinner"></div></div></div>
+      </div>
+
+      <div style="margin-top:16px">
+        <h3 class="section-title">${icons.notes} Commit Notes</h3>
+        <div id="drawer-commit-notes"><div class="spinner-wrapper"><div class="spinner"></div></div></div>
+      </div>
+    `;
+
+    // Wire actions
+    document.getElementById('drawer-btn-refresh')?.addEventListener('click', async () => {
+      if (typeof App !== 'undefined' && App.refreshSelectedTicket) {
+        App.selectTicket(ticket.id);
+        await App.refreshSelectedTicket();
+        const updated = App.tickets.find((t) => t.id === ticket.id);
+        if (updated) openKanbanDrawer(updated);
+      }
+    });
+
+    document.getElementById('drawer-btn-toggle-committed')?.addEventListener('click', async () => {
+      if (typeof App !== 'undefined' && App.toggleCodeCommitted) {
+        await App.toggleCodeCommitted(ticket.id);
+        const updated = App.tickets.find((t) => t.id === ticket.id);
+        if (updated) openKanbanDrawer(updated);
+      }
+    });
+
+    document.getElementById('drawer-btn-delete')?.addEventListener('click', () => {
+      closeKanbanDrawer();
+      if (typeof App !== 'undefined' && App.deleteSelectedTicket) {
+        App.selectTicket(ticket.id);
+        App.deleteSelectedTicket();
+      }
+    });
+
+    document.getElementById('drawer-btn-view-list')?.addEventListener('click', () => {
+      closeKanbanDrawer();
+      if (typeof App !== 'undefined') {
+        App.switchToTab('tickets');
+        App.selectTicket(ticket.id);
+      }
+    });
+
+    // Load history and notes
+    if (typeof App !== 'undefined' && App.api) {
+      App.api.getHistory(ticket.id).then((history) => {
+        renderDrawerStatusHistory(Array.isArray(history) ? history : (history?.history || []));
+      }).catch(() => {
+        renderDrawerStatusHistory([]);
+      });
+
+      App.api.getNotes(ticket.id).then((notes) => {
+        renderDrawerCommitNotes(Array.isArray(notes) ? notes : (notes?.notes || []), ticket.id);
+      }).catch(() => {
+        renderDrawerCommitNotes([], ticket.id);
+      });
+    }
+
+    drawer.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  function closeKanbanDrawer() {
+    document.getElementById('kanban-drawer')?.classList.remove('open');
+    document.getElementById('kanban-drawer-backdrop')?.classList.remove('open');
+  }
+
+  function renderDrawerStatusHistory(history) {
+    const container = document.getElementById('drawer-status-history');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!history || !history.length) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:var(--font-size-sm)">No status changes recorded.</p>';
+      return;
+    }
+    const timeline = createElement('div', 'timeline');
+    history.forEach((entry, i) => {
+      const item = createElement('div', 'timeline-item');
+      item.style.animationDelay = `${i * 0.04}s`;
+      const fromKey = getStatusClass(entry.old_state || entry.fromStatus);
+      const toKey = getStatusClass(entry.new_state || entry.toStatus);
+      const fromLabel = entry.old_state || entry.fromStatus || '—';
+      const toLabel = entry.new_state || entry.toStatus || '—';
+      const time = entry.changed_at || entry.changedAt || entry.timestamp;
+      item.innerHTML = `
+        <div class="timeline-dot"></div>
+        <div class="timeline-time">${time ? formatTimeAgo(time) : ''}</div>
+        <div class="timeline-change">
+          <span class="status-badge" data-status="${fromKey}">${escapeHtml(fromLabel)}</span>
+          <span class="timeline-arrow">→</span>
+          <span class="status-badge" data-status="${toKey}">${escapeHtml(toLabel)}</span>
+        </div>
+      `;
+      timeline.appendChild(item);
+    });
+    container.appendChild(timeline);
+  }
+
+  function renderDrawerCommitNotes(notes, ticketId) {
+    const container = document.getElementById('drawer-commit-notes');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (notes && notes.length) {
+      notes.forEach((note, i) => {
+        const card = createElement('div', 'commit-note-card');
+        card.style.animationDelay = `${i * 0.04}s`;
+        const targetHtml = note.targetStatus || note.target_status
+          ? `<span class="commit-note-target">→ ${escapeHtml(note.targetStatus || note.target_status)}</span>`
+          : '';
+        card.innerHTML = `
+          <div class="commit-note-text">${escapeHtml(note.note_text || note.noteText || note.text || '')}</div>
+          <div class="commit-note-footer">
+            <div class="commit-note-meta">
+              ${targetHtml}
+              <span class="commit-note-time">${formatTimeAgo(note.createdAt || note.created_at)}</span>
+            </div>
+            <div class="commit-note-actions">
+              <button class="icon-btn" data-action="drawer-edit-note" title="Edit">${icons.edit}</button>
+              <button class="icon-btn danger" data-action="drawer-delete-note" title="Delete">${icons.trash}</button>
+            </div>
+          </div>
+        `;
+        card.querySelector('[data-action="drawer-edit-note"]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (typeof App !== 'undefined' && App.editNote) App.editNote(note);
+        });
+        card.querySelector('[data-action="drawer-delete-note"]').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (typeof App !== 'undefined' && App.deleteNote) {
+            await App.deleteNote(note);
+            const freshNotes = await App.api.getNotes(ticketId).catch(() => []);
+            renderDrawerCommitNotes(freshNotes, ticketId);
+          }
+        });
+        container.appendChild(card);
+      });
+    } else {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:var(--font-size-sm)">No notes yet.</p>';
+    }
+
+    // Add note form
+    const form = createElement('div', 'add-note-form');
+    form.innerHTML = `
+      <textarea id="drawer-new-note-text" placeholder="Write a note…"></textarea>
+      <div class="add-note-controls">
+        <select id="drawer-new-note-target">
+          <option value="">No target status</option>
+          <option value="New">New</option>
+          <option value="Active">Active</option>
+          <option value="QA">QA</option>
+          <option value="Resolved">Resolved</option>
+          <option value="Closed">Closed</option>
+        </select>
+        <button class="btn-primary" id="drawer-btn-add-note">${icons.plus} Add Note</button>
+      </div>
+    `;
+    container.appendChild(form);
+
+    form.querySelector('#drawer-btn-add-note')?.addEventListener('click', async () => {
+      const textEl = document.getElementById('drawer-new-note-text');
+      const targetEl = document.getElementById('drawer-new-note-target');
+      const text = textEl?.value?.trim();
+      if (!text) {
+        showToast('Please enter note text', 'warning');
+        return;
+      }
+      try {
+        await App.api.addNote(ticketId, text, targetEl?.value || null);
+        showToast('Note added!', 'success');
+        const freshNotes = await App.api.getNotes(ticketId).catch(() => []);
+        renderDrawerCommitNotes(freshNotes, ticketId);
+      } catch (err) {
+        showToast(err.message || 'Failed to add note', 'error');
+      }
+    });
+  }
+
+  function populateBoardFilters(tickets) {
+    const assigneeSelect = document.getElementById('board-filter-assignee');
+    const typeSelect = document.getElementById('board-filter-type');
+    if (!Array.isArray(tickets)) return;
+
+    if (assigneeSelect) {
+      const currentVal = assigneeSelect.value;
+      const assignees = [...new Set(tickets.map((t) => t.assigned_to || t.assignedTo).filter(Boolean))].sort();
+      assigneeSelect.innerHTML = '<option value="">All Assignees</option>';
+      assignees.forEach((name) => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        if (name === currentVal) opt.selected = true;
+        assigneeSelect.appendChild(opt);
+      });
+    }
+
+    if (typeSelect) {
+      const currentVal = typeSelect.value;
+      const types = [...new Set(tickets.map((t) => t.work_item_type || t.workItemType).filter(Boolean))].sort();
+      typeSelect.innerHTML = '<option value="">All Types</option>';
+      types.forEach((type) => {
+        const opt = document.createElement('option');
+        opt.value = type;
+        opt.textContent = type;
+        if (type === currentVal) opt.selected = true;
+        typeSelect.appendChild(opt);
+      });
+    }
+  }
+
+  /* ----------------------------------------------------------
      Public API
      ---------------------------------------------------------- */
   return {
@@ -1702,5 +2201,9 @@ const UI = (() => {
     renderWorkloadLoading,
     renderWorkloadEmpty,
     exportWorkloadToExcel,
+    renderKanbanBoard,
+    openKanbanDrawer,
+    closeKanbanDrawer,
+    populateBoardFilters,
   };
 })();
