@@ -634,6 +634,76 @@ router.delete('/api/personal-notes/:noteId', (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// DAILY STANDUP
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/standup
+ * Query recently completed/committed work, in-progress tickets, recent state transitions,
+ * and notes for a quick daily standup summary.
+ * Query param: ?hours=24 (default 24)
+ */
+router.get('/api/standup', (req, res) => {
+  try {
+    const hours = Math.max(1, Math.min(720, parseInt(req.query.hours, 10) || 24));
+    const data = db.getStandupData(hours);
+
+    const completedOrResolvedStates = new Set(['resolved', 'closed', 'done', 'completed', 'qa passed']);
+    const inProgressStates = new Set(['active', 'in progress', 'in development', 'qa', 'in qa', 'ready for qa', 'new']);
+
+    // Completed: code_committed tickets OR transitioned to resolved/closed in the window
+    const completedMap = new Map();
+
+    for (const t of data.tickets) {
+      if (t.code_committed) {
+        completedMap.set(t.id, {
+          ...t,
+          reason: 'Code Committed',
+        });
+      }
+    }
+
+    for (const h of data.history) {
+      const stateLower = (h.new_state || '').toLowerCase();
+      if (completedOrResolvedStates.has(stateLower)) {
+        if (!completedMap.has(h.ticket_id)) {
+          completedMap.set(h.ticket_id, {
+            id: h.ticket_id,
+            ado_id: h.ado_id,
+            title: h.title,
+            state: h.new_state,
+            work_item_type: h.work_item_type,
+            assigned_to: h.assigned_to,
+            url: h.url,
+            code_committed: h.code_committed,
+            reason: `State moved to ${h.new_state}`,
+          });
+        }
+      }
+    }
+
+    // In Progress: tracked tickets not yet committed, in active states
+    const inProgressList = data.tickets.filter((t) => {
+      const stateLower = (t.state || '').toLowerCase();
+      return !t.code_committed && (inProgressStates.has(stateLower) || !completedMap.has(t.id));
+    });
+
+    res.json({
+      hours,
+      generatedAt: new Date().toISOString(),
+      completed: Array.from(completedMap.values()),
+      inProgress: inProgressList,
+      recentTransitions: data.history,
+      commitNotes: data.commitNotes,
+      personalNotes: data.personalNotes,
+    });
+  } catch (err) {
+    console.error('[routes] GET /api/standup error:', err.message);
+    res.status(500).json({ error: 'Failed to generate standup data' });
+  }
+});
+
 router.get('/api/events', (req, res) => {
   // Set SSE headers
   res.writeHead(200, {

@@ -521,6 +521,325 @@ const UI = (() => {
     if (overlay) overlay.classList.remove('visible');
   }
 
+  function showStandupModal(standupData, onScopeChange) {
+    const overlay = document.getElementById('modal-overlay');
+    if (!overlay) return;
+
+    let currentFormat = 'markdown'; // 'markdown' | 'plaintext'
+    let currentHours = standupData.hours || 24;
+    let data = standupData;
+
+    // Default checked states: check all completed and in-progress tickets
+    let checkedCompleted = new Set((data.completed || []).map((t) => t.id));
+    let checkedInProgress = new Set((data.inProgress || []).map((t) => t.id));
+    let checkedNotes = new Set();
+    let blockerText = '';
+
+    const todayStr = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    function generateText() {
+      const isMd = currentFormat === 'markdown';
+      const lines = [];
+
+      if (isMd) {
+        lines.push(`*Daily Standup — ${todayStr}*`);
+        lines.push('');
+        lines.push('*Yesterday / Completed:*');
+      } else {
+        lines.push(`Daily Standup — ${todayStr}`);
+        lines.push('');
+        lines.push('Yesterday / Completed:');
+      }
+
+      const completedItems = (data.completed || []).filter((t) => checkedCompleted.has(t.id));
+      if (completedItems.length === 0) {
+        lines.push(isMd ? '- None' : '• None');
+      } else {
+        completedItems.forEach((t) => {
+          const adoId = t.ado_id || t.adoId || t.id;
+          const status = t.state || 'Done';
+          const title = t.title || 'Untitled';
+          if (isMd) {
+            lines.push(`- #${adoId}: ${title} [${status}]`);
+          } else {
+            lines.push(`• #${adoId}: ${title} [${status}]`);
+          }
+        });
+      }
+
+      lines.push('');
+      if (isMd) {
+        lines.push('*Today / In Progress:*');
+      } else {
+        lines.push('Today / In Progress:');
+      }
+
+      const inProgressItems = (data.inProgress || []).filter((t) => checkedInProgress.has(t.id));
+      if (inProgressItems.length === 0) {
+        lines.push(isMd ? '- None' : '• None');
+      } else {
+        inProgressItems.forEach((t) => {
+          const adoId = t.ado_id || t.adoId || t.id;
+          const status = t.state || 'Active';
+          const title = t.title || 'Untitled';
+          if (isMd) {
+            lines.push(`- #${adoId}: ${title} [${status}]`);
+          } else {
+            lines.push(`• #${adoId}: ${title} [${status}]`);
+          }
+        });
+      }
+
+      // Blockers
+      lines.push('');
+      if (isMd) {
+        lines.push('*Blockers / Impediments:*');
+      } else {
+        lines.push('Blockers / Impediments:');
+      }
+      const trimmedBlocker = blockerText.trim();
+      if (trimmedBlocker) {
+        trimmedBlocker.split('\n').forEach((line) => {
+          if (line.trim()) lines.push(isMd ? `- ${line.trim()}` : `• ${line.trim()}`);
+        });
+      } else {
+        lines.push(isMd ? '- None' : '• None');
+      }
+
+      // Notes (if any selected)
+      const noteItems = (data.personalNotes || []).filter((n) => checkedNotes.has(n.id));
+      if (noteItems.length > 0) {
+        lines.push('');
+        lines.push(isMd ? '*Personal Notes:*' : 'Personal Notes:');
+        noteItems.forEach((n) => {
+          if (isMd) {
+            lines.push(`- ${n.title}: ${n.description}`);
+          } else {
+            lines.push(`• ${n.title}: ${n.description}`);
+          }
+        });
+      }
+
+      return lines.join('\n');
+    }
+
+    function renderModalHtml() {
+      const completedListHtml = (data.completed || []).length > 0
+        ? (data.completed || []).map((t) => `
+            <label class="standup-item-row">
+              <input type="checkbox" class="standup-checkbox" data-type="completed" data-id="${t.id}" ${checkedCompleted.has(t.id) ? 'checked' : ''} />
+              <div class="standup-item-text">
+                <strong>#${t.ado_id || t.adoId}</strong>: ${escapeHtml(t.title || 'Untitled')}
+                <span class="status-badge" data-status="${getStatusClass(t.state)}" style="display:inline-block;margin-left:4px">${escapeHtml(t.state || 'Done')}</span>
+              </div>
+            </label>
+          `).join('')
+        : '<p style="color:var(--text-muted);font-size:11px;margin:4px 0">No completed tickets in this timeframe.</p>';
+
+      const inProgressListHtml = (data.inProgress || []).length > 0
+        ? (data.inProgress || []).map((t) => `
+            <label class="standup-item-row">
+              <input type="checkbox" class="standup-checkbox" data-type="inprogress" data-id="${t.id}" ${checkedInProgress.has(t.id) ? 'checked' : ''} />
+              <div class="standup-item-text">
+                <strong>#${t.ado_id || t.adoId}</strong>: ${escapeHtml(t.title || 'Untitled')}
+                <span class="status-badge" data-status="${getStatusClass(t.state)}" style="display:inline-block;margin-left:4px">${escapeHtml(t.state || 'Active')}</span>
+              </div>
+            </label>
+          `).join('')
+        : '<p style="color:var(--text-muted);font-size:11px;margin:4px 0">No active tickets.</p>';
+
+      const personalNotesHtml = (data.personalNotes || []).length > 0
+        ? `
+          <div class="standup-section-card">
+            <div class="standup-section-heading">
+              <span>Personal Notes</span>
+              <span class="badge">${data.personalNotes.length}</span>
+            </div>
+            ${data.personalNotes.map((n) => `
+              <label class="standup-item-row">
+                <input type="checkbox" class="standup-checkbox" data-type="note" data-id="${n.id}" ${checkedNotes.has(n.id) ? 'checked' : ''} />
+                <div class="standup-item-text">
+                  <strong>${escapeHtml(n.title)}</strong>: ${escapeHtml(n.description)}
+                </div>
+              </label>
+            `).join('')}
+          </div>
+        `
+        : '';
+
+      overlay.innerHTML = `
+        <div class="modal-content standup-modal-content">
+          <div class="standup-header">
+            <div class="standup-title-wrap">
+              <h2>Daily Standup Generator</h2>
+              <span class="standup-date-tag">${escapeHtml(todayStr)}</span>
+            </div>
+            <button class="icon-btn" id="standup-close-btn" title="Close">${icons.close}</button>
+          </div>
+
+          <div class="standup-toolbar">
+            <div class="standup-timeframe-group">
+              <span style="font-size:11px;color:var(--text-muted);font-weight:600">Window:</span>
+              <button class="standup-pill-btn ${currentHours === 24 ? 'active' : ''}" data-hours="24">24h (Yesterday)</button>
+              <button class="standup-pill-btn ${currentHours === 48 ? 'active' : ''}" data-hours="48">48h (2 Days)</button>
+              <button class="standup-pill-btn ${currentHours === 72 ? 'active' : ''}" data-hours="72">72h (Monday / Weekend)</button>
+            </div>
+            <div class="standup-format-group">
+              <span style="font-size:11px;color:var(--text-muted);font-weight:600">Format:</span>
+              <button class="standup-pill-btn ${currentFormat === 'markdown' ? 'active' : ''}" data-format="markdown">Markdown (Slack/Teams)</button>
+              <button class="standup-pill-btn ${currentFormat === 'plaintext' ? 'active' : ''}" data-format="plaintext">Plain Text</button>
+            </div>
+          </div>
+
+          <div class="standup-layout-grid">
+            <div class="standup-selector-column">
+              <div class="standup-section-card">
+                <div class="standup-section-heading">
+                  <span>Completed / Committed</span>
+                  <span class="badge">${(data.completed || []).length}</span>
+                </div>
+                ${completedListHtml}
+              </div>
+
+              <div class="standup-section-card">
+                <div class="standup-section-heading">
+                  <span>In Progress / Today</span>
+                  <span class="badge">${(data.inProgress || []).length}</span>
+                </div>
+                ${inProgressListHtml}
+              </div>
+
+              <div class="standup-section-card">
+                <div class="standup-section-heading">
+                  <span>Blockers & Impediments</span>
+                </div>
+                <textarea class="standup-blockers-input" id="standup-blockers" placeholder="Enter blockers (or leave empty for 'None')">${escapeHtml(blockerText)}</textarea>
+              </div>
+
+              ${personalNotesHtml}
+            </div>
+
+            <div class="standup-preview-column">
+              <div class="standup-preview-heading">
+                <span>Formatted Standup (Editable)</span>
+                <span style="font-size:11px;color:var(--text-muted)">Live preview</span>
+              </div>
+              <textarea class="standup-textarea" id="standup-textarea">${escapeHtml(generateText())}</textarea>
+            </div>
+          </div>
+
+          <div class="standup-footer">
+            <button class="btn-ghost" id="standup-cancel-btn">Close</button>
+            <button class="btn-copy-standup" id="btn-copy-standup">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span>Copy to Clipboard</span>
+            </button>
+          </div>
+        </div>
+      `;
+
+      bindEvents();
+    }
+
+    function updatePreviewOnly() {
+      const ta = document.getElementById('standup-textarea');
+      if (ta) ta.value = generateText();
+    }
+
+    function bindEvents() {
+      document.getElementById('standup-close-btn')?.addEventListener('click', hideModal);
+      document.getElementById('standup-cancel-btn')?.addEventListener('click', hideModal);
+
+      overlay.querySelectorAll('.standup-checkbox').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          const id = Number(cb.dataset.id);
+          const type = cb.dataset.type;
+          if (type === 'completed') {
+            if (cb.checked) checkedCompleted.add(id);
+            else checkedCompleted.delete(id);
+          } else if (type === 'inprogress') {
+            if (cb.checked) checkedInProgress.add(id);
+            else checkedInProgress.delete(id);
+          } else if (type === 'note') {
+            if (cb.checked) checkedNotes.add(id);
+            else checkedNotes.delete(id);
+          }
+          updatePreviewOnly();
+        });
+      });
+
+      const blockerEl = document.getElementById('standup-blockers');
+      if (blockerEl) {
+        blockerEl.addEventListener('input', (e) => {
+          blockerText = e.target.value;
+          updatePreviewOnly();
+        });
+      }
+
+      overlay.querySelectorAll('.standup-timeframe-group .standup-pill-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const hours = Number(btn.dataset.hours);
+          if (hours === currentHours) return;
+          currentHours = hours;
+          if (onScopeChange) {
+            btn.textContent = 'Loading…';
+            const freshData = await onScopeChange(hours);
+            if (freshData) {
+              data = freshData;
+              checkedCompleted = new Set((data.completed || []).map((t) => t.id));
+              checkedInProgress = new Set((data.inProgress || []).map((t) => t.id));
+              renderModalHtml();
+            }
+          }
+        });
+      });
+
+      overlay.querySelectorAll('.standup-format-group .standup-pill-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          currentFormat = btn.dataset.format;
+          overlay.querySelectorAll('.standup-format-group .standup-pill-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          updatePreviewOnly();
+        });
+      });
+
+      const copyBtn = document.getElementById('btn-copy-standup');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+          const ta = document.getElementById('standup-textarea');
+          const textToCopy = ta ? ta.value : generateText();
+          try {
+            await navigator.clipboard.writeText(textToCopy);
+            copyBtn.classList.add('copied');
+            copyBtn.innerHTML = `
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M20 6 9 17l-5-5"/></svg>
+              <span>Copied! 🎉</span>
+            `;
+            showToast('Standup summary copied to clipboard!', 'success');
+            setTimeout(() => {
+              copyBtn.classList.remove('copied');
+              copyBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy to Clipboard</span>
+              `;
+            }, 2500);
+          } catch (err) {
+            showToast('Failed to copy text. Please select and copy manually.', 'warning');
+          }
+        });
+      }
+    }
+
+    renderModalHtml();
+    overlay.offsetHeight;
+    overlay.classList.add('visible');
+  }
+
   function showAddTicketModal() {
     showModal(
       'Track a Work Item',
@@ -1321,6 +1640,7 @@ const UI = (() => {
     showConfirmDeleteModal,
     showEditNoteModal,
     showEditPersonalNoteModal,
+    showStandupModal,
     updateConnectionStatus,
     updateNotificationCount,
     updateDesktopNotificationBtn,

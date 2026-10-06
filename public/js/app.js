@@ -128,6 +128,10 @@ const App = (() => {
     deletePersonalNote(id) {
       return this._fetch(`/api/personal-notes/${id}`, { method: 'DELETE' });
     },
+
+    getStandupData(hours = 24) {
+      return this._fetch(`/api/standup?hours=${hours}`);
+    },
   };
 
   /* ----------------------------------------------------------
@@ -733,6 +737,25 @@ const App = (() => {
   }
 
   /* ----------------------------------------------------------
+     Daily Standup Generator
+     ---------------------------------------------------------- */
+  async function openDailyStandup() {
+    try {
+      UI.showToast('Fetching standup activity…', 'info');
+      const data = await api.getStandupData(24);
+      UI.showStandupModal(data, async (hours) => {
+        try {
+          return await api.getStandupData(hours);
+        } catch {
+          return null;
+        }
+      });
+    } catch {
+      /* handled in _fetch */
+    }
+  }
+
+  /* ----------------------------------------------------------
      Tab Switching
      ---------------------------------------------------------- */
   function switchToTab(tabName) {
@@ -760,6 +783,12 @@ const App = (() => {
 
     /* Show empty detail state */
     UI.showEmptyState('detail');
+
+    /* Standup button */
+    const standupBtn = document.getElementById('btn-standup-trigger');
+    if (standupBtn) {
+      standupBtn.addEventListener('click', openDailyStandup);
+    }
 
     /* FAB click */
     const fab = document.getElementById('fab-add');
@@ -894,6 +923,7 @@ const App = (() => {
     deletePersonalNote,
     loadPersonalNotes,
     requestNotificationPermission,
+    openDailyStandup,
     switchToTab,
     init,
   };

@@ -360,6 +360,52 @@ function deletePersonalNote(noteId) {
 }
 
 // ---------------------------------------------------------------------------
+// Standup Summary
+// ---------------------------------------------------------------------------
+
+/**
+ * Return activity and status changes within `hours` for the Daily Standup report.
+ * @param {number} hours — lookback window in hours (default 24)
+ */
+function getStandupData(hours = 24) {
+  const history = db.prepare(`
+    SELECT sh.*, t.ado_id, t.title, t.work_item_type, t.assigned_to, t.url, t.code_committed
+    FROM status_history sh
+    JOIN tickets t ON t.id = sh.ticket_id
+    WHERE datetime(sh.changed_at) >= datetime('now', '-' || ? || ' hours')
+    ORDER BY datetime(sh.changed_at) DESC
+  `).all(hours);
+
+  const tickets = db.prepare(`
+    SELECT * FROM tickets
+    ORDER BY code_committed DESC, priority ASC, id DESC
+  `).all();
+
+  const commitNotes = db.prepare(`
+    SELECT cn.*, t.ado_id, t.title
+    FROM commit_notes cn
+    JOIN tickets t ON t.id = cn.ticket_id
+    WHERE datetime(cn.updated_at) >= datetime('now', '-' || ? || ' hours')
+       OR datetime(cn.created_at) >= datetime('now', '-' || ? || ' hours')
+    ORDER BY datetime(cn.updated_at) DESC
+  `).all(hours, hours);
+
+  const personalNotes = db.prepare(`
+    SELECT * FROM personal_notes
+    WHERE datetime(updated_at) >= datetime('now', '-' || ? || ' hours')
+    ORDER BY datetime(updated_at) DESC
+  `).all(hours);
+
+  return {
+    hours,
+    history,
+    tickets,
+    commitNotes,
+    personalNotes,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 
@@ -387,4 +433,6 @@ module.exports = {
   addPersonalNote,
   updatePersonalNote,
   deletePersonalNote,
+  getStandupData,
 };
+
