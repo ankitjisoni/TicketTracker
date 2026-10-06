@@ -73,6 +73,8 @@ function parseWorkItem(raw) {
     iterationPath: fields['System.IterationPath'] || null,
     storyPoints,
     teamProject: fields['System.TeamProject'] || null,
+    changedDate: fields['System.ChangedDate'] || null,
+    createdDate: fields['System.CreatedDate'] || null,
     url: raw._links && raw._links.html ? raw._links.html.href : null,
   };
 }

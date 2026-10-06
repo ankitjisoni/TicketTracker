@@ -54,8 +54,11 @@ const UI = (() => {
 
   function formatTimeAgo(dateString) {
     if (!dateString) return '';
+    const hasZone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(dateString);
+    const d = new Date(hasZone ? dateString : `${dateString.replace(' ', 'T')}Z`);
+    const then = d.getTime();
+    if (Number.isNaN(then)) return '';
     const now = Date.now();
-    const then = new Date(dateString).getTime();
     const diff = Math.max(0, now - then);
     const seconds = Math.floor(diff / 1000);
     if (seconds < 60) return 'just now';
@@ -136,7 +139,7 @@ const UI = (() => {
         <div class="ticket-card-title">${escapeHtml(t.title || 'Untitled')}</div>
         <div class="ticket-card-meta">
           <span class="ticket-card-assignee">${icons.user}${escapeHtml(t.assigned_to || t.assignedTo || 'Unassigned')}</span>
-          <span class="ticket-card-time">${formatTimeAgo(t.last_fetched_at || t.lastUpdated || t.updatedAt)}</span>
+          <span class="ticket-card-time" title="${t.changed_date ? `Changed in ADO: ${formatDateTime(t.changed_date)}` : `Synced: ${formatDateTime(t.last_fetched_at)}`}">${formatTimeAgo(t.changed_date || t.changedDate || t.last_fetched_at || t.lastUpdated || t.updatedAt)}</span>
         </div>
       `;
 
@@ -209,8 +212,12 @@ const UI = (() => {
           <div class="metadata-value">${escapeHtml(ticket.iteration_path || ticket.iterationPath || '—')}</div>
         </div>
         <div class="metadata-item">
-          <div class="metadata-label">Last Updated</div>
-          <div class="metadata-value">${formatTimeAgo(ticket.last_fetched_at || ticket.lastUpdated || ticket.updatedAt)}</div>
+          <div class="metadata-label">Last Changed (ADO)</div>
+          <div class="metadata-value" title="${ticket.changed_date ? formatDateTime(ticket.changed_date) : ''}">${ticket.changed_date ? formatTimeAgo(ticket.changed_date) : formatTimeAgo(ticket.last_fetched_at)}</div>
+        </div>
+        <div class="metadata-item">
+          <div class="metadata-label">Last Synced</div>
+          <div class="metadata-value" title="${formatDateTime(ticket.last_fetched_at)}">${formatTimeAgo(ticket.last_fetched_at)}</div>
         </div>
       </div>
 
@@ -2300,7 +2307,7 @@ const UI = (() => {
                 <span>${escapeHtml(assignee)}</span>
               </div>
               <div class="kanban-card-footer-right">
-                <span class="kanban-card-time">${formatTimeAgo(t.last_fetched_at || t.lastUpdated)}</span>
+                <span class="kanban-card-time" title="${t.changed_date ? `Changed in ADO: ${formatDateTime(t.changed_date)}` : `Synced: ${formatDateTime(t.last_fetched_at)}`}">${formatTimeAgo(t.changed_date || t.changedDate || t.last_fetched_at || t.lastUpdated)}</span>
                 <select class="kanban-card-move-select" data-action="quick-move" title="Move status">
                   <option value="" disabled selected>Move…</option>
                   <option value="New" ${t.state === 'New' ? 'disabled' : ''}>${t.state === 'New' ? '✓ New (Current)' : '→ Move to New'}</option>

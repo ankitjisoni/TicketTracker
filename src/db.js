@@ -96,6 +96,12 @@ function initDb() {
   if (!ticketColumns.some((col) => col.name === 'story_points')) {
     db.exec('ALTER TABLE tickets ADD COLUMN story_points REAL DEFAULT NULL');
   }
+  if (!ticketColumns.some((col) => col.name === 'changed_date')) {
+    db.exec('ALTER TABLE tickets ADD COLUMN changed_date TEXT DEFAULT NULL');
+  }
+  if (!ticketColumns.some((col) => col.name === 'ado_created_date')) {
+    db.exec('ALTER TABLE tickets ADD COLUMN ado_created_date TEXT DEFAULT NULL');
+  }
 
   console.log('[db] Database initialised at', DB_PATH);
 }
@@ -122,9 +128,11 @@ function getTicketById(id) {
 function addTicket(item) {
   const stmt = db.prepare(`
     INSERT INTO tickets (ado_id, title, state, assigned_to, work_item_type,
-                         priority, area_path, iteration_path, story_points, url, last_fetched_at)
+                         priority, area_path, iteration_path, story_points, url,
+                         changed_date, ado_created_date, last_fetched_at)
     VALUES (@adoId, @title, @state, @assignedTo, @workItemType,
-            @priority, @areaPath, @iterationPath, @storyPoints, @url, datetime('now'))
+            @priority, @areaPath, @iterationPath, @storyPoints, @url,
+            @changedDate, @createdDate, datetime('now'))
   `);
 
   const info = stmt.run({
@@ -138,6 +146,8 @@ function addTicket(item) {
     iterationPath: item.iterationPath,
     storyPoints: item.storyPoints ?? null,
     url: item.url,
+    changedDate: item.changedDate || null,
+    createdDate: item.createdDate || null,
   });
 
   return getTicketById(info.lastInsertRowid);
@@ -170,6 +180,7 @@ function updateTicketFromAdo(ticketId, item) {
            iteration_path  = @iterationPath,
            story_points    = @storyPoints,
            url             = @url,
+           changed_date    = COALESCE(@changedDate, changed_date),
            last_fetched_at = datetime('now')
      WHERE id = @ticketId
   `).run({
@@ -183,6 +194,7 @@ function updateTicketFromAdo(ticketId, item) {
     iterationPath: item.iterationPath,
     storyPoints: item.storyPoints ?? null,
     url: item.url,
+    changedDate: item.changedDate || null,
   });
 
   return getTicketById(ticketId);
