@@ -581,9 +581,7 @@ const App = (() => {
   async function addNote() {
     if (!selectedTicketId) return;
     const textEl = document.getElementById('new-note-text');
-    const statusEl = document.getElementById('new-note-target-status');
     const text = textEl?.value.trim();
-    const targetStatus = statusEl?.value || '';
 
     if (!text) {
       UI.showToast('Please enter note text.', 'warning');
@@ -591,7 +589,7 @@ const App = (() => {
     }
 
     try {
-      await api.addNote(selectedTicketId, text, targetStatus);
+      await api.addNote(selectedTicketId, text);
       /* Reload notes */
       const notes = await api.getNotes(selectedTicketId);
       UI.renderCommitNotes(Array.isArray(notes) ? notes : (notes?.notes || []));
@@ -600,9 +598,9 @@ const App = (() => {
   }
 
   function editNote(note) {
-    UI.showEditNoteModal(note, async (noteId, text, targetStatus) => {
+    UI.showEditNoteModal(note, async (noteId, text) => {
       try {
-        await api.updateNote(noteId, text, targetStatus);
+        await api.updateNote(noteId, text);
         const notes = await api.getNotes(selectedTicketId);
         UI.renderCommitNotes(Array.isArray(notes) ? notes : (notes?.notes || []));
         UI.showToast('Note updated.', 'success');

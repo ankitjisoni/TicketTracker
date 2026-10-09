@@ -554,10 +554,6 @@ const UI = (() => {
         const card = createElement('div', 'commit-note-card');
         card.style.animationDelay = `${i * 0.04}s`;
 
-        const targetHtml = note.targetStatus || note.target_status
-          ? `<span class="commit-note-target">→ ${escapeHtml(note.targetStatus || note.target_status)}</span>`
-          : '';
-
         const rawNoteText = note.note_text || note.noteText || note.text || '';
         const formatted = formatNoteContent(rawNoteText);
 
@@ -566,7 +562,6 @@ const UI = (() => {
           ${formatted.imagesHtml}
           <div class="commit-note-footer">
             <div class="commit-note-meta">
-              ${targetHtml}
               <span class="commit-note-time">${formatTimeAgo(note.createdAt || note.created_at)}</span>
             </div>
             <div class="commit-note-actions">
@@ -613,14 +608,6 @@ const UI = (() => {
         <input type="file" id="file-commit-img" accept="image/*" style="display:none" />
       </div>
       <div class="add-note-controls">
-        <select id="new-note-target-status">
-          <option value="">No target status</option>
-          <option value="New">New</option>
-          <option value="Active">Active</option>
-          <option value="QA">QA</option>
-          <option value="Resolved">Resolved</option>
-          <option value="Closed">Closed</option>
-        </select>
         <button class="btn-primary" id="btn-add-note">${icons.plus} Add Note</button>
       </div>
     `;
@@ -1139,7 +1126,6 @@ const UI = (() => {
 
     // Options
     let includeNotes = true;
-    let includePoints = true;
     let includeLinks = true;
     let includeContributors = true;
 
@@ -1175,7 +1161,6 @@ const UI = (() => {
       ];
 
       const totalItems = allSelected.length;
-      const totalPoints = allSelected.reduce((sum, t) => sum + (t.storyPoints || 0), 0);
       const activeContributors = Array.from(new Set(allSelected.map((t) => t.assignedTo || t.assigned_to).filter(Boolean))).sort();
 
       if (isMd) {
@@ -1185,9 +1170,6 @@ const UI = (() => {
         lines.push('');
         lines.push('### 📊 Release Summary');
         lines.push(`- **Total Deliverables:** ${totalItems} work item${totalItems !== 1 ? 's' : ''}`);
-        if (includePoints && totalPoints > 0) {
-          lines.push(`- **Story Points Delivered:** ${Math.round(totalPoints * 10) / 10} pts`);
-        }
         lines.push(`- **Features & Enhancements:** ${selectedFeatures.length}`);
         lines.push(`- **Bug Fixes:** ${selectedBugs.length}`);
         if (selectedTasks.length > 0) lines.push(`- **Technical Tasks:** ${selectedTasks.length}`);
@@ -1200,9 +1182,8 @@ const UI = (() => {
             const idPart = includeLinks && t.url
               ? `[#${t.adoId}](${t.url})`
               : `#${t.adoId}`;
-            const pointsPart = includePoints && t.storyPoints != null ? ` \`(${t.storyPoints} pts)\`` : '';
             const assigneePart = includeContributors && (t.assignedTo || t.assigned_to) ? ` — *${t.assignedTo || t.assigned_to}*` : '';
-            lines.push(`- **${idPart}**: ${t.title}${pointsPart}${assigneePart}`);
+            lines.push(`- **${idPart}**: ${t.title}${assigneePart}`);
 
             if (includeNotes && t.notes && t.notes.length > 0) {
               t.notes.forEach((n) => {
@@ -1235,9 +1216,6 @@ const UI = (() => {
         parts.push(`<h3>📊 Release Summary</h3>`);
         parts.push(`<ul>`);
         parts.push(`  <li><strong>Deliverables:</strong> ${totalItems} work items</li>`);
-        if (includePoints && totalPoints > 0) {
-          parts.push(`  <li><strong>Story Points:</strong> ${Math.round(totalPoints * 10) / 10} pts</li>`);
-        }
         parts.push(`  <li><strong>Features:</strong> ${selectedFeatures.length} | <strong>Bug Fixes:</strong> ${selectedBugs.length}</li>`);
         parts.push(`</ul>`);
 
@@ -1249,13 +1227,12 @@ const UI = (() => {
             const linkHtml = includeLinks && t.url
               ? `<a href="${escapeHtml(t.url)}" target="_blank">#${t.adoId}</a>`
               : `#${t.adoId}`;
-            const ptsHtml = includePoints && t.storyPoints != null ? ` <code>(${t.storyPoints} pts)</code>` : '';
             const assignHtml = includeContributors && (t.assignedTo || t.assigned_to) ? ` <em>(${escapeHtml(t.assignedTo || t.assigned_to)})</em>` : '';
             let noteHtml = '';
             if (includeNotes && t.notes && t.notes.length > 0) {
               noteHtml = `<ul>${t.notes.map((n) => `<li>📝 <em>Note:</em> ${escapeHtml(n.text || '')}</li>`).join('')}</ul>`;
             }
-            parts.push(`  <li><strong>${linkHtml}</strong>: ${escapeHtml(t.title)}${ptsHtml}${assignHtml}${noteHtml}</li>`);
+            parts.push(`  <li><strong>${linkHtml}</strong>: ${escapeHtml(t.title)}${assignHtml}${noteHtml}</li>`);
           });
           parts.push(`</ul>`);
         }
@@ -1278,7 +1255,7 @@ const UI = (() => {
       plain.push(`RELEASE NOTES: ${title.toUpperCase()}`);
       plain.push(`Date: ${dateStr} | Scope: ${currentIteration || 'All Sprints'}`);
       plain.push('--------------------------------------------------');
-      plain.push(`SUMMARY: ${totalItems} items delivered (${totalPoints} pts)`);
+      plain.push(`SUMMARY: ${totalItems} items delivered`);
       plain.push(`Features: ${selectedFeatures.length} | Bugs Fixed: ${selectedBugs.length} | Tasks: ${selectedTasks.length}`);
       plain.push('');
 
@@ -1286,9 +1263,8 @@ const UI = (() => {
         if (!items || items.length === 0) return;
         plain.push(`${secTitle.toUpperCase()} (${items.length}):`);
         items.forEach((t) => {
-          const pts = includePoints && t.storyPoints != null ? ` (${t.storyPoints} pts)` : '';
           const who = includeContributors && (t.assignedTo || t.assigned_to) ? ` [${t.assignedTo || t.assigned_to}]` : '';
-          plain.push(` • #${t.adoId}: ${t.title}${pts}${who}`);
+          plain.push(` • #${t.adoId}: ${t.title}${who}`);
           if (includeNotes && t.notes && t.notes.length > 0) {
             t.notes.forEach((n) => plain.push(`    - Note: ${n.text}`));
           }
@@ -1340,14 +1316,12 @@ const UI = (() => {
           .map((t) => {
             const isChecked = checkedTickets.has(t.id);
             const notesCount = (t.notes || []).length;
-            const pointsBadge = t.storyPoints != null ? `<span class="kanban-tag kanban-tag-points" style="font-size:10px">${t.storyPoints}p</span>` : '';
             return `
               <label class="rn-item-row">
                 <input type="checkbox" class="rn-checkbox" data-id="${t.id}" ${isChecked ? 'checked' : ''} />
                 <div class="rn-item-body">
                   <div>
                     <strong>#${t.adoId}</strong>: ${escapeHtml(t.title || 'Untitled')}
-                    ${pointsBadge}
                     <span class="status-badge" data-status="${getStatusClass(t.state)}" style="font-size:9px;padding:1px 5px">${escapeHtml(t.state || 'Done')}</span>
                   </div>
                   ${notesCount > 0 ? `<div class="rn-item-notes-preview">📝 ${escapeHtml(t.notes[0].text)}${notesCount > 1 ? ` (+${notesCount - 1} more note${notesCount > 2 ? 's' : ''})` : ''}</div>` : ''}
@@ -1418,10 +1392,6 @@ const UI = (() => {
                   <label class="rn-option-label">
                     <input type="checkbox" id="rn-opt-notes" ${includeNotes ? 'checked' : ''} />
                     <span>Include Notes</span>
-                  </label>
-                  <label class="rn-option-label">
-                    <input type="checkbox" id="rn-opt-points" ${includePoints ? 'checked' : ''} />
-                    <span>Story Points</span>
                   </label>
                   <label class="rn-option-label">
                     <input type="checkbox" id="rn-opt-links" ${includeLinks ? 'checked' : ''} />
@@ -1498,10 +1468,6 @@ const UI = (() => {
       // Options
       document.getElementById('rn-opt-notes')?.addEventListener('change', (e) => {
         includeNotes = e.target.checked;
-        updatePreviewOnly();
-      });
-      document.getElementById('rn-opt-points')?.addEventListener('change', (e) => {
-        includePoints = e.target.checked;
         updatePreviewOnly();
       });
       document.getElementById('rn-opt-links')?.addEventListener('change', (e) => {
@@ -1677,25 +1643,15 @@ const UI = (() => {
            <span>Attach Image</span>
          </button>
          <input type="file" id="file-modal-edit-img" accept="image/*" style="display:none" />
-       </div>
-       <label style="margin-top:12px;">Target Status</label>
-       <select id="modal-edit-note-status">
-         <option value="">No target status</option>
-         <option value="New"${(note.targetStatus || note.target_status) === 'New' ? ' selected' : ''}>New</option>
-         <option value="Active"${(note.targetStatus || note.target_status) === 'Active' ? ' selected' : ''}>Active</option>
-         <option value="QA"${(note.targetStatus || note.target_status) === 'QA' ? ' selected' : ''}>QA</option>
-         <option value="Resolved"${(note.targetStatus || note.target_status) === 'Resolved' ? ' selected' : ''}>Resolved</option>
-         <option value="Closed"${(note.targetStatus || note.target_status) === 'Closed' ? ' selected' : ''}>Closed</option>
-       </select>`,
+       </div>`,
       () => {
         const text = document.getElementById('modal-edit-note-text')?.value.trim();
-        const status = document.getElementById('modal-edit-note-status')?.value || '';
         if (!text) {
           showToast('Note text cannot be empty.', 'warning');
           return;
         }
         hideModal();
-        if (onSave) onSave(note.id, text, status);
+        if (onSave) onSave(note.id, text);
       }
     );
 
@@ -2220,21 +2176,16 @@ const UI = (() => {
 
     // Summary stats bar
     const summaryBar = createElement('div', 'workload-summary-bar');
-    const pointsFormatted = data.totalStoryPoints != null ? data.totalStoryPoints : 0;
     summaryBar.innerHTML = `
       <div class="workload-stat-card" style="animation-delay:0s">
         <div class="workload-stat-label">Total Tickets</div>
         <div class="workload-stat-value">${data.totalTickets}</div>
       </div>
       <div class="workload-stat-card" style="animation-delay:0.04s">
-        <div class="workload-stat-label">Total Story Points</div>
-        <div class="workload-stat-value">${pointsFormatted}<span style="font-size:var(--font-size-sm);font-weight:600;margin-left:4px;color:var(--accent-primary)">pts</span></div>
-      </div>
-      <div class="workload-stat-card" style="animation-delay:0.08s">
         <div class="workload-stat-label">Team Members</div>
         <div class="workload-stat-value">${data.totalMembers || data.members.length}</div>
       </div>
-      <div class="workload-stat-card" style="animation-delay:0.12s">
+      <div class="workload-stat-card" style="animation-delay:0.08s">
         <div class="workload-stat-label">Scope</div>
         <div class="workload-stat-value" style="font-size:var(--font-size-md)">${escapeHtml(data.dateFrom || '')} → ${escapeHtml(data.dateTo || '')}</div>
         ${data.iterationPath ? `<div class="workload-stat-sub" title="${escapeHtml(data.iterationPath)}">Sprint: ${escapeHtml(data.iterationPath.split('\\').pop())}</div>` : ''}
@@ -2288,14 +2239,11 @@ const UI = (() => {
 
       const barWidth = maxCount > 0 ? Math.round((member.ticketCount / maxCount) * 100) : 0;
 
-      // Build ticket rows HTML — now with Story Points, Area, and Iteration
+      // Build ticket rows HTML — Area and Iteration
       const ticketRowsHtml = tickets
         .map((t) => {
           const statusKey = getStatusClass(t.state);
           const url = t.url || '#';
-          const pointsBadge = t.storyPoints != null
-            ? `<span class="member-ticket-points" title="Story Points">${t.storyPoints} pts</span>`
-            : '';
           const iterBadge = t.iterationPath
             ? `<span class="member-ticket-iteration" title="${escapeHtml(t.iterationPath)}">${escapeHtml(t.iterationPath.split('\\').pop())}</span>`
             : '';
@@ -2303,7 +2251,6 @@ const UI = (() => {
             <div class="member-ticket-row">
               <a class="member-ticket-id" href="${escapeHtml(url)}" target="_blank" rel="noopener">#${t.id}</a>
               <span class="member-ticket-title">${escapeHtml(t.title || 'Untitled')}</span>
-              ${pointsBadge}
               <span class="member-ticket-project" title="${escapeHtml(t.areaPath || '—')}">${escapeHtml(t.areaPath || '—')}</span>
               ${iterBadge}
               <span class="status-badge" data-status="${statusKey}">${escapeHtml(t.state || 'New')}</span>
@@ -2347,10 +2294,10 @@ const UI = (() => {
               <div class="member-bar-track">
                 <div class="member-bar-fill" style="width:${barWidth}%"></div>
               </div>
-              <span class="member-bar-label">${member.ticketCount} ticket${member.ticketCount !== 1 ? 's' : ''}${member.storyPoints ? ` • ${member.storyPoints} pts` : ''}</span>
+              <span class="member-bar-label">${member.ticketCount} ticket${member.ticketCount !== 1 ? 's' : ''}</span>
             </div>
           </div>
-          <span class="member-count-badge">${member.ticketCount}${member.storyPoints ? ` (${member.storyPoints}p)` : ''}</span>
+          <span class="member-count-badge">${member.ticketCount}</span>
           <svg class="member-expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
         </div>
         <div class="member-tickets">
@@ -2398,9 +2345,9 @@ const UI = (() => {
     const rows = [
       ['Team Workload Report'],
       [`Date Range: ${dateFrom} to ${dateTo}${data.iterationPath ? ` | Iteration: ${data.iterationPath}` : ''}`],
-      [`Total Tickets: ${data.totalTickets || 0} | Total Story Points: ${data.totalStoryPoints || 0}`],
+      [`Total Tickets: ${data.totalTickets || 0}`],
       [''],
-      ['Assigned To', 'Ticket ID', 'Title', 'Story Points', 'Area Path', 'Iteration Path', 'Status', 'Work Item Type', 'Currently Assigned To'],
+      ['Assigned To', 'Ticket ID', 'Title', 'Area Path', 'Iteration Path', 'Status', 'Work Item Type', 'Currently Assigned To'],
     ];
 
     data.members.forEach((member) => {
@@ -2409,7 +2356,6 @@ const UI = (() => {
           member.name || '',
           String(t.id || ''),
           t.title || '',
-          t.storyPoints != null ? String(t.storyPoints) : '',
           t.areaPath || '',
           t.iterationPath || '',
           t.state || '',
@@ -2528,14 +2474,9 @@ const UI = (() => {
 
     // Overall summary badge
     const totalCount = filtered.length;
-    const totalPoints = filtered.reduce(
-      (sum, t) => sum + (typeof t.story_points === 'number' ? t.story_points : (typeof t.storyPoints === 'number' ? t.storyPoints : 0)),
-      0
-    );
     const summaryBadge = document.getElementById('board-summary-badge');
     if (summaryBadge) {
-      const ptsFormatted = Math.round(totalPoints * 10) / 10;
-      summaryBadge.textContent = `${totalCount} ticket${totalCount !== 1 ? 's' : ''} • ${ptsFormatted} pts`;
+      summaryBadge.textContent = `${totalCount} ticket${totalCount !== 1 ? 's' : ''}`;
     }
 
     // Group tickets by stage
@@ -2553,18 +2494,12 @@ const UI = (() => {
     KANBAN_STAGES.forEach((stageObj) => {
       const listEl = document.getElementById(`cards-stage-${stageObj.key}`);
       const countEl = document.getElementById(`count-stage-${stageObj.key}`);
-      const pointsEl = document.getElementById(`points-stage-${stageObj.key}`);
       const colEl = document.getElementById(`kanban-col-${stageObj.key}`);
       if (!listEl) return;
 
       const items = groups[stageObj.key] || [];
-      const stagePoints = items.reduce(
-        (sum, t) => sum + (typeof t.story_points === 'number' ? t.story_points : (typeof t.storyPoints === 'number' ? t.storyPoints : 0)),
-        0
-      );
 
       if (countEl) countEl.textContent = items.length;
-      if (pointsEl) pointsEl.textContent = `${Math.round(stagePoints * 10) / 10} pts`;
 
       listEl.innerHTML = '';
 
@@ -2580,8 +2515,6 @@ const UI = (() => {
       } else {
         items.forEach((t) => {
           const isCommitted = !!t.code_committed;
-          const points = t.story_points ?? t.storyPoints ?? null;
-          const pointsBadge = points != null ? `<span class="kanban-tag kanban-tag-points">${points} pts</span>` : '';
           const typeStr = t.work_item_type || t.workItemType || 'Work Item';
           const priority = t.priority;
           const priorityBadge = priority ? `<span class="kanban-tag kanban-tag-priority p${priority}">P${priority}</span>` : '';
@@ -2600,7 +2533,6 @@ const UI = (() => {
             <div class="kanban-card-top">
               <div class="kanban-card-top-left">
                 <a class="kanban-card-id" href="${escapeHtml(t.url || '#')}" target="_blank" rel="noopener">#${escapeHtml(String(t.ado_id || t.adoId || ''))}</a>
-                ${pointsBadge}
               </div>
               <div class="kanban-card-top-right">
                 <button class="committed-toggle-btn${isCommitted ? ' active' : ''}" data-action="toggle-committed" title="${isCommitted ? 'Completed — click to unmark' : 'Mark as Completed'}">
@@ -2721,7 +2653,6 @@ const UI = (() => {
     }
 
     const isCommitted = !!ticket.code_committed;
-    const points = ticket.story_points ?? ticket.storyPoints ?? null;
 
     body.innerHTML = `
       <h2 style="font-size:var(--font-size-lg);font-weight:700;color:var(--text-primary);line-height:1.4">${escapeHtml(ticket.title || 'Untitled')}</h2>
@@ -2736,10 +2667,6 @@ const UI = (() => {
           <div class="metadata-value">${escapeHtml(ticket.assigned_to || ticket.assignedTo || 'Unassigned')}</div>
         </div>
         <div class="metadata-item">
-          <div class="metadata-label">Story Points</div>
-          <div class="metadata-value" style="color:var(--accent-primary);font-weight:700">${points != null ? `${points} pts` : '—'}</div>
-        </div>
-        <div class="metadata-item">
           <div class="metadata-label">Priority</div>
           <div class="metadata-value">${escapeHtml(String(ticket.priority || '—'))}</div>
         </div>
@@ -2750,6 +2677,10 @@ const UI = (() => {
         <div class="metadata-item">
           <div class="metadata-label">Area</div>
           <div class="metadata-value" title="${escapeAttr(ticket.area_path || ticket.areaPath || '')}">${escapeHtml((ticket.area_path || ticket.areaPath || '—').split('\\').pop())}</div>
+        </div>
+        <div class="metadata-item">
+          <div class="metadata-label">Last Changed</div>
+          <div class="metadata-value" title="${ticket.changed_date ? formatDateTime(ticket.changed_date) : ''}">${ticket.changed_date ? formatTimeAgo(ticket.changed_date) : (ticket.last_fetched_at ? formatTimeAgo(ticket.last_fetched_at) : '—')}</div>
         </div>
       </div>
 
@@ -2868,9 +2799,6 @@ const UI = (() => {
       notes.forEach((note, i) => {
         const card = createElement('div', 'commit-note-card');
         card.style.animationDelay = `${i * 0.04}s`;
-        const targetHtml = note.targetStatus || note.target_status
-          ? `<span class="commit-note-target">→ ${escapeHtml(note.targetStatus || note.target_status)}</span>`
-          : '';
         const rawNoteText = note.note_text || note.noteText || note.text || '';
         const formatted = formatNoteContent(rawNoteText);
 
@@ -2879,7 +2807,6 @@ const UI = (() => {
           ${formatted.imagesHtml}
           <div class="commit-note-footer">
             <div class="commit-note-meta">
-              ${targetHtml}
               <span class="commit-note-time">${formatTimeAgo(note.createdAt || note.created_at)}</span>
             </div>
             <div class="commit-note-actions">
@@ -2928,14 +2855,6 @@ const UI = (() => {
         <input type="file" id="file-drawer-img" accept="image/*" style="display:none" />
       </div>
       <div class="add-note-controls">
-        <select id="drawer-new-note-target">
-          <option value="">No target status</option>
-          <option value="New">New</option>
-          <option value="Active">Active</option>
-          <option value="QA">QA</option>
-          <option value="Resolved">Resolved</option>
-          <option value="Closed">Closed</option>
-        </select>
         <button class="btn-primary" id="drawer-btn-add-note">${icons.plus} Add Note</button>
       </div>
     `;
@@ -2955,14 +2874,13 @@ const UI = (() => {
 
     form.querySelector('#drawer-btn-add-note')?.addEventListener('click', async () => {
       const textEl = document.getElementById('drawer-new-note-text');
-      const targetEl = document.getElementById('drawer-new-note-target');
       const text = textEl?.value?.trim();
       if (!text) {
         showToast('Please enter note text or paste an image', 'warning');
         return;
       }
       try {
-        await App.api.addNote(ticketId, text, targetEl?.value || null);
+        await App.api.addNote(ticketId, text);
         showToast('Note added!', 'success');
         const freshNotes = await App.api.getNotes(ticketId).catch(() => []);
         renderDrawerCommitNotes(freshNotes, ticketId);
